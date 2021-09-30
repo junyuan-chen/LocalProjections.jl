@@ -2,3 +2,27 @@ name = "LocalProjections"
 uuid = "8dd5e8af-b996-4a51-9681-92a36a2638c1"
 authors = ["Junyuan Chen <norman.chen.git@gmail.com>"]
 version = "0.1.0"
+
+[deps]
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
+StatsFuns = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
+Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
+
+[compat]
+CSV = "0.8, 0.9"
+CodecZlib = "0.6, 0.7"
+DataFrames = "1"
+StatsBase = "0.33"
+StatsFuns = "0.9"
+Tables = "1"
+julia = "1"
+
+[extras]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["CSV", "CodecZlib", "DataFrames", "LinearAlgebra", "Test"]
