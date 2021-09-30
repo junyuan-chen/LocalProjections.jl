@@ -35,7 +35,6 @@ struct LocalProjectionResult{TF<:AbstractFloat, VCE<:CovarianceEstimator} <: Sta
     lookupy::Dict{Symbol,Int}
     lookupxw::Dict{Symbol,Int}
     nlag::Int
-    nhorz::Int
     nocons::Bool
 end
 
@@ -168,15 +167,16 @@ function lp(data, ynames;
     return LocalProjectionResult(B, V, T, vce, ynames, xnames, wnames,
         Dict(n=>i for (i,n) in enumerate(ynames)),
         Dict(n=>i for (i,n) in enumerate(vcat(xnames, wnames))),
-        nlag, nhorz, nocons)
+        nlag, nocons)
 end
 
 show(io::IO, r::LocalProjectionResult) = print(io, typeof(r).name.name)
 
 function show(io::IO, ::MIME"text/plain", r::LocalProjectionResult)
+    H = length(r.B)
     print(io, "$(typeof(r).name.name) with $(r.nlag) lag")
-    print(io, r.nlag > 1 ? "s " : " ", "over $(r.nhorz) horizon")
-    println(io, r.nhorz > 1 ? "s:" : ":")
+    print(io, r.nlag > 1 ? "s " : " ", "over $H horizon")
+    println(io, H > 1 ? "s:" : ":")
     print(io, "  outcome name", length(r.ynames) > 1 ? "s:" : ":")
     println(io, (" $n" for n in r.ynames)...)
     if length(r.xnames) > 0
