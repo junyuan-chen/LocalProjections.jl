@@ -115,26 +115,26 @@ end
     r = lp(df, :ebp, wnames=ns, nlag=12, nhorz=48)
     @test coef(r, 1, :ebp, :ff4_tc) ≈ 0.394494467439933
     @test coef(r, 5, :ebp, :ff4_tc) ≈ 0.147288229090455
-    @test sqrt(vcov(r, 1, :ebp, :ff4_tc)) ≈ 0.473834526724786
-    @test sqrt(vcov(r, 5, :ebp, :ff4_tc)) ≈ 0.737092370022356
+    @test sqrt(vcov(r, 1, :ebp, :ff4_tc)) ≈ 0.473834526724786 atol = 1e-8
+    @test sqrt(vcov(r, 5, :ebp, :ff4_tc)) ≈ 0.737092370022356 atol = 1e-8
     # Compare additional estimates obtained from Matlab lp before being turned into irf
     # Run in gk.m: lp(Y, 11, 1, 4, false, false)
     @test coef(r, 1, :ebp, :constant) ≈ -2.945365821418727
     @test coef(r, 1, :ebp, :logip) ≈ -0.060094199554036
-    @test vcov(r, 1, :ebp, :constant) ≈ 0.641933721888132
-    @test vcov(r, 1, :ebp, :logcpi) ≈ 0.007331238288153
-    @test vcov(r, 1, :ebp, :logcpi, 12) ≈ 0.004780116443880
+    @test vcov(r, 1, :ebp, :constant) ≈ 0.641933721888132 atol = 1e-8
+    @test vcov(r, 1, :ebp, :logcpi) ≈ 0.007331238288153 atol = 1e-8
+    @test vcov(r, 1, :ebp, :logcpi, 12) ≈ 0.004780116443880 atol = 1e-8
 
     f = irf(r, :ebp, :ff4_tc)
     @test coef(f)[1] ≈ 0.394494467439933
     @test coef(f)[20] ≈ -0.552849402428304
-    @test stderror(f)[1] ≈ 0.473834526724786
-    @test stderror(f)[20] ≈ 1.005046789996172
+    @test stderror(f)[1] ≈ 0.473834526724786 atol = 1e-8
+    @test stderror(f)[20] ≈ 1.005046789996172 atol = 1e-8
     ci = confint(f)
-    @test ci[1][1] ≈ -0.384893972486403
-    @test ci[2][1] ≈ 1.173882907366730
-    @test ci[1][20] ≈ -2.206004261810359
-    @test ci[2][20] ≈ 1.100305456953579
+    @test ci[1][1] ≈ -0.384893972486403 atol = 1e-8
+    @test ci[2][1] ≈ 1.173882907366730 atol = 1e-8
+    @test ci[1][20] ≈ -2.206004261810359 atol = 1e-8
+    @test ci[2][20] ≈ 1.100305456953579 atol = 1e-8
 
     ns1 = [3, :logip, 5, :ff4_tc]
     r1 = lp(df, 11, wnames=ns1, nlag=12, nhorz=1)

@@ -116,7 +116,6 @@ function _lp(ys, xs, ws, nlag::Int, horz::Int, vce::CovarianceEstimator; TF=Floa
     return reg(Y, X, vce)..., T
 end
 
-_checknames(::Symbol) = true
 _checknames(names) = all(n isa Union{Integer, Symbol} for n in names)
 
 _toint(data, name::Symbol) = Tables.columnindex(data, name)
