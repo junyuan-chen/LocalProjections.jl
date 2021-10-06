@@ -8,7 +8,7 @@
 
 using CSV, CodecZlib, DataFrames
 
-function main()
+function gk()
     var = CSV.read("data/VAR_data.csv", DataFrame)
     iv = CSV.read("data/factor_data.csv", DataFrame)
     # Merge the two datasets
@@ -16,6 +16,18 @@ function main()
     open(GzipCompressorStream, "data/gk.csv.gz", "w") do stream
         CSV.write(stream, out)
     end
+end
+
+function hp()
+    hp = CSV.read("data/employment.csv", DataFrame, header=[:quarter, :payrolls_a, :payrolls_u])
+    open(GzipCompressorStream, "data/hp.csv.gz", "w") do stream
+        CSV.write(stream, hp)
+    end
+end
+
+function main()
+    gk()
+    hp()
 end
 
 main()

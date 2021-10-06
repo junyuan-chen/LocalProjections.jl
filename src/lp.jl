@@ -50,15 +50,6 @@ function vcov(r::LocalProjectionResult, horz::Int, yname1::Symbol, xwname1::Symb
     return r.V[horz][(k1-1)*length(r.ynames)+n1, (k2-1)*length(r.ynames)+n2]
 end
 
-function _esample!(esample::BitVector, aux::BitVector, v::AbstractVector)
-    aux .= isequal.(isfinite.(v), true)
-    esample .&= aux
-    if Missing <: eltype(v)
-        aux .= .~(ismissing.(v))
-        esample .&= aux
-    end
-end
-
 function _makeYX(ys, xs, ws, nlag::Int, horz::Int; TF=Float64)
     ny = length(ys)
     ny > 0 || throw(ArgumentError("ys cannot be empty"))
@@ -66,10 +57,15 @@ function _makeYX(ys, xs, ws, nlag::Int, horz::Int; TF=Float64)
     nlag > 0 || throw(ArgumentError("nlag must be at least 1"))
     # Number of rows involved in estimation
     T = Tfull - nlag - horz
-    # Indicate whether a missing value exists in each row
+    nx = length(xs)
+    nw = length(ws)
+    nw > 0 || throw(ArgumentError("ws cannot be empty"))
+    T > nx+nw*nlag || throw(ArgumentError("not enough observations for nlag=$nlag and horz=$(horz)"))
+    # Indicate whether the corresponding row is used for estimation
     esample = trues(T)
     # A cache for indicators
     aux = BitVector(undef, T)
+    # Construct matrices
     Y = Matrix{TF}(undef, T, ny)
     for j in 1:ny
         size(ys[j],1) == Tfull ||
@@ -78,9 +74,6 @@ function _makeYX(ys, xs, ws, nlag::Int, horz::Int; TF=Float64)
         _esample!(esample, aux, v)
         copyto!(view(Y,esample,j), view(v,esample))
     end
-    nx = length(xs)
-    nw = length(ws)
-    nw > 0 || throw(ArgumentError("ws cannot be empty"))
     X = Matrix{TF}(undef, T, nx+nw*nlag)
     if nx > 0
         for j in 1:nx
@@ -103,7 +96,7 @@ function _makeYX(ys, xs, ws, nlag::Int, horz::Int; TF=Float64)
     end
     T1 = sum(esample)
     if T1 < T
-        T1 == 0 && throw(ArgumentError("no valid observation for nlag=$nlag and horz=$(horz)"))
+        T1 > size(X,2) || throw(ArgumentError("not enough observations for nlag=$nlag and horz=$(horz)"))
         T = T1
         Y = Y[esample, :]
         X = X[esample, :]

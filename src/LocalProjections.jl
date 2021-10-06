@@ -11,7 +11,9 @@ import StatsBase: coef, vcov, stderror, confint, coeftable, modelmatrix, residua
 # Reexport objects from StatsBase
 export coef, vcov, stderror, confint, coeftable, modelmatrix, residuals
 
-export LocalProjectionResult,
+export hamilton_filter,
+
+       LocalProjectionResult,
        lp,
 
        SimpleVCE,
