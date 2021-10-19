@@ -2,7 +2,7 @@
     df = exampledata(:gk)
     ns = (:logcpi, :logip, :ff, :ebp, :ff4_tc)
     r = lp(df, :ebp, wnames=ns, nlag=12, nhorz=48)
-    f = irf(r, :ebp, :ff4_tc)
+    f = irf(r, :ebp, :ff4_tc, lag=1)
 
     @test sprint(show, f) == "ImpulseResponse"
     w = VERSION < v"1.4.0" ? " " : ""
@@ -20,17 +20,17 @@
         ────────────────────────────────────────────────────────────────
         42 rows of estimates omitted"""
     
-    r1 = lp(df, :ebp, wnames=ns, nlag=12, nhorz=5)
-    f1 = irf(r1, :ebp, :ff4_tc)
+    r1 = lp(df, :ebp, wnames=ns, nlag=12, minhorz=1, nhorz=5)
+    f1 = irf(r1, :ebp, :ff4_tc, lag=1)
     @test sprint(show, MIME("text/plain"), f1) == """
         ImpulseResponse with 5 horizons:
         ────────────────────────────────────────────────────────────────
              Estimate  Std. Error      z  Pr(>|z|)  Lower 90%  Upper 90%
         ────────────────────────────────────────────────────────────────
-        0   0.394494     0.473835   0.83    0.4051  -0.384894   1.17388$w
         1   0.161872     0.509504   0.32    0.7507  -0.676188   0.999932
         2  -0.0203338    0.611236  -0.03    0.9735  -1.02573    0.98506$w
         3   0.152802     0.724653   0.21    0.8330  -1.03915    1.34475$w
         4   0.147288     0.737092   0.20    0.8416  -1.06512    1.3597$w$w
+        5   1.0421       0.771451   1.35    0.1768  -0.226826   2.31102$w
         ────────────────────────────────────────────────────────────────"""
 end

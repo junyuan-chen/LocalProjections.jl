@@ -68,8 +68,8 @@ function _esample!(esample::BitVector, aux::BitVector, v::AbstractVector)
 end
 
 """
-    hamilton_filter(y::AbstractVector, h::Integer, p::Integer)
-    hamilton_filter(y::AbstractVector, freq::Symbol)
+    hamilton_filter(y::AbstractVector, h::Integer, p::Integer; subset)
+    hamilton_filter(y::AbstractVector, freq::Symbol; subset)
 
 Decompose the time series in `y` into a cyclical component and a trend component
 using the method by Hamilton (2018).
@@ -79,9 +79,13 @@ for estimation are skipped.
 Returned vectors are of the same length as `y`.
 
 # Arguments
+- `y::AbstractVector`: vector storing the time series to be filtered.
 - `h::Integer`: horizon of forcasting; for business cycles, should cover 2 years.
 - `p::Integer`: number of lags used for estimation, including the contemporary one.
 - `freq::Symbol`: use default values of `h` and `p` suggested by Hamilton (2018) based on data frequency; must be `:m`, `:q` or `:y` for monthly, quarterly or annual data.
+
+# Keywords
+- `subset::Union{BitVector,Nothing}=nothing`: Boolean indices of rows in `y` to be filtered.
 
 # Returns
 - `Vector{Float64}`: the cyclical component.
@@ -92,47 +96,51 @@ Returned vectors are of the same length as `y`.
 Hamilton, James D. 2018. "Why You Should Never Use the Hodrick-Prescott Filter."
 The Review of Economics and Statistics 100 (5): 831-843.
 """
-function hamilton_filter(y::AbstractVector, h::Integer, p::Integer)
-    T = length(y)
-    T1 = T - p - h + 1
+function hamilton_filter(y::AbstractVector, h::Integer, p::Integer;
+        subset::Union{BitVector,Nothing}=nothing)
+    Tfull = length(y)
+    T = Tfull - p - h + 1
     h > 0 || throw(ArgumentError("h must be positive; got $h"))
     p > 0 || throw(ArgumentError("p must be positive; got $p"))
-    T1 > p + h + 1 || throw(ArgumentError("not enough observations for estimation"))
+    T > p + h + 1 || throw(ArgumentError("not enough observations for estimation"))
 
     # Indicate whether a missing value exists in each row
-    esample = trues(T1)
+    esample = trues(T)
     # A cache for indicators
-    aux = BitVector(undef, T1)
+    aux = BitVector(undef, T)
 
     # Construct lag matrix
-    X = Matrix{Float64}(undef, T1, p+1)
+    X = Matrix{Float64}(undef, T, p+1)
     X[:,1] .= 1.0
     for j = 1:p
-        v = view(y, p-j+1:T-h-j+1)
+        v = view(y, p-j+1:Tfull-h-j+1)
+        subset === nothing || (esample .&= view(subset, p-j+1:Tfull-h-j+1))
         _esample!(esample, aux, v)
         copyto!(view(X,esample,j+1), view(v,esample))
     end
-    v = view(y, p+h:T)
+    v = view(y, p+h:Tfull)
+    subset === nothing || (esample .&= view(subset, p+h:Tfull))
     _esample!(esample, aux, v)
     Y = v[esample]
-    T2 = sum(esample)
-    if T2 < T1
-        T2 > size(X, 2) || throw(ArgumentError("not enough valid observations left in sample"))
+    T1 = sum(esample)
+    if T1 < T
+        T1 > size(X, 2) || throw(ArgumentError("not enough valid observations left in sample"))
         X = X[esample, :]
     end
     # OLS
-    b = X\Y
-    Xb = X*b
-    trend = fill(NaN, T)
-    trend[view(p+h:T, esample)] .= Xb
-    cycle = fill(NaN, T)
-    cycle[view(p+h:T, esample)] .= Y .- Xb
+    b = X \ Y
+    Xb = X * b
+    trend = fill(NaN, Tfull)
+    trend[view(p+h:Tfull, esample)] .= Xb
+    cycle = fill(NaN, Tfull)
+    cycle[view(p+h:Tfull, esample)] .= Y .- Xb
     # Returned esample has the same length as input data
-    prepend!(esample, (false for i in 1:p+h-1))
+    prepend!(esample, falses(p+h-1))
     return cycle, trend, esample
 end
 
-function hamilton_filter(y::AbstractVector, freq::Symbol)
+function hamilton_filter(y::AbstractVector, freq::Symbol;
+        subset::Union{BitVector,Nothing}=nothing)
     if freq == :m
         N = 12
     elseif freq == :q
@@ -142,5 +150,61 @@ function hamilton_filter(y::AbstractVector, freq::Symbol)
     else
         throw(ArgumentError("invalid input for freq; must be :m, :q or :y"))
     end
-    return hamilton_filter(y, 2*N, N)
+    return hamilton_filter(y, 2*N, N, subset=subset)
+end
+
+"""
+    TransformedVar{T}
+
+Supertype for all types used to specify variable transformation.
+"""
+abstract type TransformedVar{T} end
+
+_geto(v::TransformedVar) = getfield(v, :o)
+size(v::TransformedVar, dim) = size(_geto(v), dim)
+length(v::TransformedVar) = length(_geto(v))
+vec(v::Union{AbstractVector,TransformedVar}, subset::Union{BitVector,Nothing},
+    vartype::Symbol, horz::Int, TF::Type) = v
+
+show(io::IO, c::TransformedVar{<:Union{Integer,Symbol}}) =
+    print(io, typeof(c).name.name, "(", _geto(c), ")")
+
+struct Cum{T} <: TransformedVar{T}
+    o::T
+end
+
+getcolumn(data, c::Cum) = Cum(getcolumn(data, _geto(c)))
+
+function vec(c::Cum{<:AbstractVector}, subset::Union{BitVector,Nothing},
+        vartype::Symbol, horz::Int, TF::Type)
+    v = c.o
+    out = zeros(TF, length(v))
+    T = length(v) - horz
+    na = convert(TF, NaN)
+    if vartype == :y
+        if subset === nothing
+            for h in 0:horz
+                out[horz+1:end] .+= coalesce.(view(v, 1+h:T+h), na)
+            end
+        else
+            for h in 0:horz
+                out[horz+1:end] .= ifelse.(view(subset, 1+h:T+h),
+                    out[horz+1:end].+coalesce.(view(v, 1+h:T+h), na), na)
+            end
+        end
+        out[1:horz] .= na
+    elseif vartype == :x
+        if subset === nothing
+            for h in 0:horz
+                out[1:T] .+= coalesce.(view(v, 1+h:T+h), na)
+            end
+        else
+            for h in 0:horz
+                out[1:T] .= ifelse.(view(subset, 1+h:T+h),
+                    out[1:T].+coalesce.(view(v, 1+h:T+h), na), na)
+            end
+        end
+        out[T+1:end] .= na
+    end
+    return out
 end

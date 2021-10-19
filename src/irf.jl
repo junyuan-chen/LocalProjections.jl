@@ -3,8 +3,9 @@ struct ImpulseResponse{TF<:AbstractFloat, VCE<:CovarianceEstimator} <: Statistic
     SE::Vector{TF}
     T::Vector{Int}
     vce::VCE
-    yname::Symbol
-    xname::Symbol
+    yname::VarName
+    xname::VarName
+    minhorz::Int
 end
 
 coef(f::ImpulseResponse) = f.B
@@ -17,29 +18,30 @@ function confint(f::ImpulseResponse; level::Real=0.9, horz=Colon())
     return b .- scale .* se, b .+ scale .* se
 end
 
-function irf(r::LocalProjectionResult{TF}, yname::Symbol, xwname::Symbol) where TF
+function irf(r::LocalProjectionResult{TF}, yname::VarName, xwname::VarName; lag::Int=0) where TF
     H = length(r.B)
     B = Vector{TF}(undef, H)
     SE = Vector{TF}(undef, H)
     for h in 1:H
-        B[h] = coef(r, h, yname, xwname)
-        SE[h] = sqrt(vcov(r, h, yname, xwname))
+        B[h] = coef(r, h, xwname, yname=yname, lag=lag)
+        SE[h] = sqrt(vcov(r, h, xwname, yname1=yname, lag1=lag))
     end
-    return ImpulseResponse(B, SE, r.T, r.vce, yname, xwname)
+    return ImpulseResponse(B, SE, r.T, r.vce, yname, xwname, r.minhorz)
 end
 
-function coeftable(f::ImpulseResponse; level::Real=0.90, horz=Colon())
+function coeftable(f::ImpulseResponse;
+        level::Real=0.90, horz::Union{Integer,AbstractVector,Colon}=Colon())
     H = length(f.B)
     if horz !== Colon()
         cf = coef(f)[horz]
         se = stderror(f)[horz]
         cil, ciu = confint(f, level=level, horz=horz)
-        cnames = horz.-1
+        cnames = horz .+ f.minhorz .-1
     else
         cf = coef(f)
         se = stderror(f)
         cil, ciu = confint(f, level=level)
-        cnames = 0:H-1
+        cnames = f.minhorz:f.minhorz+H-1
     end
     ts = cf ./ se
     pv = 2 .* normccdf.(abs.(ts))

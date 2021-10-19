@@ -3,15 +3,17 @@ module LocalProjections
 using StatsBase: CovarianceEstimator, StatisticalModel, RegressionModel, CoefTable
 using StatsFuns: normccdf, norminvcdf
 using Tables
-using Tables: getcolumn
 
-import Base: show
+import Base: show, size, length, vec
 import StatsBase: coef, vcov, stderror, confint, coeftable, modelmatrix, residuals
+import Tables: getcolumn
 
 # Reexport objects from StatsBase
 export coef, vcov, stderror, confint, coeftable, modelmatrix, residuals
 
 export hamilton_filter,
+       TransformedVar,
+       Cum,
 
        LocalProjectionResult,
        lp,

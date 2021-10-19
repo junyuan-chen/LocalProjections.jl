@@ -40,16 +40,54 @@ end
     @test isequal(c2, c1)
     @test isequal(t2, t1)
 
+    T = length(pa)
     pa1 = copy(pa)
     pa1[2] = NaN
     c1, t1, e1 = hamilton_filter(pa1, :q)
     @test isfinite.(c1) == e1
     @test isfinite.(t1) == e1
-    @test all(~e1[i] for i in 1:13)
-    @test sum(e1) == length(c) - 13
+    @test e1 == ((1:T).>13)
+
+    c1, t1, e1 = hamilton_filter(pa1, :q, subset=1:T.<=100)
+    @test isfinite.(c1) == e1
+    @test isfinite.(t1) == e1
+    @test e1 == ((1:T).>13).&((1:T).<=100)
 
     @test_throws ArgumentError hamilton_filter(pa, 0, 1)
     @test_throws ArgumentError hamilton_filter(pa, 1, 0)
     @test_throws ArgumentError hamilton_filter(pa[1:24], 8, 4)
     @test_throws ArgumentError hamilton_filter(pa, :n)
+end
+
+@testset "Cum" begin
+    df = exampledata(:gk)
+    T = size(df, 1)
+    c = Cum(:ff4_tc)
+    @test _geto(c) == :ff4_tc
+    v = getcolumn(df, c)
+    @test v === Cum(df.ff4_tc)
+    @test size(v, 1) == size(df.ff4_tc, 1)
+    @test length(v) == length(df.ff4_tc)
+    @test isequal(vec(Cum(df.ff4_tc), nothing, :x, 0, Float64), coalesce.(df.ff4_tc, NaN))
+
+    r = copy(df.ff4_tc)
+    r[1:end-2] += df.ff4_tc[2:end-1] + df.ff4_tc[3:end]
+    r[end-1:end] .= NaN
+    v = vec(Cum(df.ff4_tc), nothing, :x, 2, Float64)
+    @test v[.~isnan.(v)] ≈ r[.~isnan.(v)]
+    v = vec(Cum(df.ff4_tc), (1:T.<=200).|(1:T.>220), :x, 2, Float64)
+    @test v[.~isnan.(v)] ≈ r[.~isnan.(v)]
+    @test isnan.(v[191:230]) == ((1:40).>8).&((1:40).<=30)
+    r = copy(df.ff4_tc)
+    r[3:end] += df.ff4_tc[1:end-2] + df.ff4_tc[2:end-1]
+    r[1:2] .= NaN
+    v = vec(Cum(df.ff4_tc), nothing, :y, 2, Float64)
+    @test v[.~isnan.(v)] ≈ r[.~isnan.(v)]
+    v = vec(Cum(df.ff4_tc), (1:T.<=200).|(1:T.>220), :y, 2, Float64)
+    @test v[.~isnan.(v)] ≈ r[.~isnan.(v)]
+    @test isnan.(v[191:230]) == ((1:40).>10).&((1:40).<=32)
+
+    @test _toint(df, c) === Cum(16)
+    @test _toname(df, Cum(16)) === c
+    @test sprint(show, c) == "Cum(ff4_tc)"
 end

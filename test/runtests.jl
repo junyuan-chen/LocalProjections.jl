@@ -5,8 +5,9 @@ using CSV
 using CodecZlib: GzipDecompressorStream
 using DataFrames
 using LinearAlgebra: Diagonal
-using LocalProjections: kron_fastl, kron_fastr, getscore,
-    ols, reg, _makeYX, _lp
+using LocalProjections: kron_fastl, kron_fastr, getscore, _geto,
+    ols, reg, VarName, _makeYX, _firststage, _lp, _toint, _toname
+using Tables: getcolumn
 
 function exampledata(name::Union{Symbol,String})
     path = (@__DIR__)*"/../data/$(name).csv.gz"
