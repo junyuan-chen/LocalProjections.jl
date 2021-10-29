@@ -1,4 +1,20 @@
 """
+    @fieldequal Supertype
+
+Define a method of `==` for all subtypes of `Supertype`
+such that `==` returns true if each pair of the field values
+from two instances are equal by `==`.
+"""
+macro fieldequal(Supertype)
+    return esc(quote
+        function ==(x::T, y::T) where T <: $Supertype
+            f = fieldnames(T)
+            getfield.(Ref(x),f) == getfield.(Ref(y),f)
+        end
+    end)
+end
+
+"""
     kron_fastl(A::AbstractMatrix, B::AbstractMatrix)
 
 Compute `kron(I(n), A) * B` without explicitely calculating the Kronecker product
@@ -35,7 +51,7 @@ function kron_fastr(A::AbstractMatrix, B::AbstractMatrix)
 end
 
 """
-    getscore(X::AbstractMatrix, resid::AbstractMatrix)
+    getscore(X::AbstractMatrix, resid::AbstractVecOrMat)
 
 Compute the regression scores (the product of the residuals and regressors)
 with possibly multiple outcome variables.
@@ -48,10 +64,12 @@ function getscore(X::AbstractMatrix, resid::AbstractMatrix)
         ix = (j-1) ÷ N + 1
         ir = j % N
         ir == 0 && (ir = N)
-        out[t, j] = X[t,ix] * resid[t,ir]
+        out[t,j] = X[t,ix] * resid[t,ir]
     end
     return out
 end
+
+getscore(X::AbstractMatrix, resid::AbstractVector) = X .* resid
 
 # Check whether the input data is a column table
 function checktable(data)

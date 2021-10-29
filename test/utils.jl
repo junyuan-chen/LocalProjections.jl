@@ -3,7 +3,7 @@
     A = randn(p, q)
     B = randn(q*n, m)
     # Do not use I(n) to allow compatibility with Julia v1.0
-    eye = Diagonal(ones(n))
+    eye = Matrix{Float64}(I, n, n)
     @test kron(eye, A) * B ≈ kron_fastl(A, B)
     @test kron(A, eye) * B ≈ kron_fastr(A, B)
 end
@@ -12,7 +12,9 @@ end
     T, K, N = 5, 3, 2
     X = randn(T, K)
     resid = randn(T, N)
-    @test kron(X, ones(1, N)).*repeat(resid, outer=(1,K)) == getscore(X, resid)
+    @test getscore(X, resid) == kron(X, ones(1, N)).*repeat(resid, outer=(1,K))
+    resid = randn(T)
+    @test getscore(X, resid) == X.*resid
 end
 
 @testset "hamilton_filter" begin

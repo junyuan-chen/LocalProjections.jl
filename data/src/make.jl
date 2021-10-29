@@ -41,10 +41,18 @@ function rz()
     end
 end
 
+function bb()
+    df = CSV.read("data/data.csv", DataFrame)
+    open(GzipCompressorStream, "data/bb.csv.gz", "w") do stream
+        CSV.write(stream, df)
+    end
+end
+
 function main()
     gk()
     hp()
     rz()
+    bb()
 end
 
 main()

@@ -18,8 +18,9 @@ function confint(f::ImpulseResponse; level::Real=0.9, horz=Colon())
     return b .- scale .* se, b .+ scale .* se
 end
 
-function irf(r::LocalProjectionResult{TF}, yname::VarName, xwname::VarName; lag::Int=0) where TF
-    H = length(r.B)
+function irf(r::LocalProjectionResult, yname::VarName, xwname::VarName; lag::Int=0)
+    TF = typeof(r).parameters[4]
+    H = length(r.T)
     B = Vector{TF}(undef, H)
     SE = Vector{TF}(undef, H)
     for h in 1:H

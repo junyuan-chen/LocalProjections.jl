@@ -4,9 +4,10 @@ using LocalProjections
 using CSV
 using CodecZlib: GzipDecompressorStream
 using DataFrames
-using LinearAlgebra: Diagonal
+using LinearAlgebra: I
 using LocalProjections: kron_fastl, kron_fastr, getscore, _geto,
-    ols, reg, VarName, _makeYX, _firststage, _lp, _toint, _toname
+    ols, reg, VarName, _makeYX, _firststage, _lp, _toint, _toname,
+    _basismatrix, _makeYSr, _makeP
 using Tables: getcolumn
 
 function exampledata(name::Union{Symbol,String})
@@ -19,6 +20,7 @@ end
 const tests = [
     "utils",
     "lp",
+    "slp",
     "irf"
 ]
 
