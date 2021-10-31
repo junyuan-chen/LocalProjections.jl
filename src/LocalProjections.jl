@@ -1,9 +1,10 @@
 module LocalProjections
 
 using BSplines: BSplineBasis, basismatrix
+using FFTW: fft!
 using LinearAlgebra: cholesky!, inv!, svd!, ldiv!, mul!, I
 using StatsBase: CovarianceEstimator, StatisticalModel, RegressionModel, CoefTable, TestStat
-using StatsFuns: normccdf, norminvcdf
+using StatsFuns: normccdf, norminvccdf, tdistccdf, tdistinvccdf
 using Tables
 
 import Base: ==, show, size, length, vec
@@ -20,6 +21,7 @@ export hamilton_filter,
        AbstractEstimator,
        LeastSquareLP,
        AbstractEstimatorResult,
+       LeastSquareLPResult,
        LocalProjectionResult,
        lp,
 
@@ -40,6 +42,12 @@ export hamilton_filter,
 
        SimpleVCE,
        HRVCE,
+       LongRunVariance,
+       HARVCE,
+       EqualWeightedCosine,
+       EWC,
+       criticalvalue,
+       pvalue,
 
        ImpulseResponse,
        irf

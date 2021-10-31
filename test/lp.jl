@@ -3,21 +3,12 @@
     X = randn(T, K)
     b = randn(K, N)
     Y = X * b
-    m = ols(Y, X)
+    m = OLS(Y, X)
     @test m.coef ≈ b
     @test modelmatrix(m) === X
     @test coef(m) === m.coef
     @test residuals(m) === m.resid
-end
-
-@testset "reg" begin
-    T, N, K = 100, 2, 4
-    X = randn(T, K)
-    b = randn(K, N)
-    Y = X * b + randn(T, N)
-    (b, v) = reg(Y, X, SimpleVCE())
-    @test size(b) == (K, N)
-    @test size(v) == (K*N, K*N)
+    @test sprint(show, m) == "OLS regression"
 end
 
 @testset "LeastSquareLP" begin
@@ -143,7 +134,7 @@ end
     ys = [randn(T), randn(T)]
     xs = [randn(T), randn(T)]
     ws = ys
-    b, v, t = _lp(ys, xs, ws, 3, 5, SimpleVCE(), nothing)
+    b, v, t, m = _lp(ys, xs, ws, 3, 5, SimpleVCE(), nothing)
     @test size(b) == (8, 2)
     @test size(v) == (16, 16)
     @test t == 92
@@ -153,24 +144,26 @@ end
     # EHW standard errors
     # https://github.com/jm4474/Lag-augmented_LocalProjections/blob/master/examples/gk.m
     # The intercept estimated will be the same if not detrend the level before estimation
+    # The left division in Matlab code uses QR factorization to solve OLS
+    # The use of Cholesky factorization results in some trivial discrepancy
     df = exampledata(:gk)
     ns = (:logcpi, :logip, :ff, :ebp, :ff4_tc)
-    r = lp(df, :ebp, wnames=ns, nlag=12, nhorz=48)
-    @test coef(r, 1, :ff4_tc, lag=1) ≈ 0.394494467439933
-    @test coef(r, 5, :ff4_tc, lag=1) ≈ 0.147288229090455
+    r = lp(df, :ebp, wnames=ns, nlag=12, nhorz=48, vce=HRVCE())
+    @test coef(r, 1, :ff4_tc, lag=1) ≈ 0.394494467439933 atol=1e-8
+    @test coef(r, 5, :ff4_tc, lag=1) ≈ 0.147288229090455 atol=1e-8
     @test sqrt(vcov(r, 1, :ff4_tc, lag1=1)) ≈ 0.473834526724786 atol=1e-8
     @test sqrt(vcov(r, 5, :ff4_tc, lag1=1)) ≈ 0.737092370022356 atol=1e-8
     # Compare additional estimates obtained from Matlab lp before being turned into irf
     # Run in gk.m: lp(Y, 11, 1, 4, false, false)
-    @test coef(r, 1, :constant) ≈ -2.945365821418727
-    @test coef(r, 1, :logip, lag=1) ≈ -0.060094199554036
+    @test coef(r, 1, :constant) ≈ -2.945365821418727 atol=1e-8
+    @test coef(r, 1, :logip, lag=1) ≈ -0.060094199554036 atol=1e-8
     @test vcov(r, 1, :constant) ≈ 0.641933721888132 atol=1e-8
     @test vcov(r, 1, :logcpi, lag1=1) ≈ 0.007331238288153 atol=1e-8
     @test vcov(r, 1, :logcpi, lag1=12) ≈ 0.004780116443880 atol=1e-8
 
     f = irf(r, :ebp, :ff4_tc, lag=1)
-    @test coef(f)[1] ≈ 0.394494467439933
-    @test coef(f)[20] ≈ -0.552849402428304
+    @test coef(f)[1] ≈ 0.394494467439933 atol=1e-8
+    @test coef(f)[20] ≈ -0.552849402428304 atol=1e-8
     @test stderror(f)[1] ≈ 0.473834526724786 atol=1e-8
     @test stderror(f)[20] ≈ 1.005046789996172 atol=1e-8
     ci = confint(f)
@@ -180,19 +173,21 @@ end
     @test ci[2][20] ≈ 1.100305456953579 atol=1e-8
 
     ns1 = [3, :logip, 5, :ff4_tc]
-    r1 = lp(df, 11, wnames=ns1, nlag=12, nhorz=1)
+    r1 = lp(df, 11, wnames=ns1, nlag=12, nhorz=1, vce=HRVCE())
     @test r1.B[1:3,1,1] ≈ r.B[1:3,1,1]
     @test r1.V[1:3,1:3,1] ≈ r.V[1:3,1:3,1]
 
-    rn = lp(df, :ebp, xnames=:ff4_tc, wnames=(:ff4_tc,), nlag=12, nhorz=2, normalize=:ff4_tc=>:ff)
-    riv = lp(df, :ebp, xnames=:ff, wnames=(:ff4_tc,), nlag=12, nhorz=2, iv=:ff=>:ff4_tc)
+    rn = lp(df, :ebp, xnames=:ff4_tc, wnames=(:ff4_tc,), nlag=12, nhorz=2,
+        normalize=:ff4_tc=>:ff, vce=HRVCE())
+    riv = lp(df, :ebp, xnames=:ff, wnames=(:ff4_tc,), nlag=12, nhorz=2,
+        iv=:ff=>:ff4_tc, vce=HRVCE())
     @test coef(rn, 1, :ff4_tc) ≈ coef(riv, 1, :ff)
     @test coef(rn, 2, :ff4_tc) ≈ coef(riv, 2, :ff)
     @test vcov(rn, 1, :ff4_tc) ≈ vcov(riv, 1, :ff)
     @test vcov(rn, 2, :ff4_tc) ≈ vcov(riv, 2, :ff)
     @test rn.normnames == [:ff4_tc]
     @test rn.normtars == [:ff]
-    @test rn.normmults ≈ [-5.3028242533068495]
+    @test rn.normmults ≈ [-5.3028242533068495] atol=1e-8
     @test riv.endonames == VarName[:ff]
     @test riv.ivnames == VarName[:ff4_tc]
 
@@ -200,6 +195,19 @@ end
     @test_throws ArgumentError lp(df, :ebp, xnames=:ff, iv=:no=>:ff4_tc)
     @test_throws ArgumentError lp(df, :ebp, xnames=:ff, iv=:ff=>())
     @test_throws ArgumentError lp(df, :ebp, xnames=:ff, iv=:ff=>1.0)
+
+    # Compare standard errors based on EWC with Matlab results
+    r2 = lp(r, HARVCE(EWC()))
+    f2 = irf(r2, :ebp, :ff4_tc, lag=1)
+    @test f2.B == f.B
+    @test f2.T == f.T
+    @test stderror(f2)[1] ≈ 0.408141982124863 atol=1e-8
+    @test stderror(f2)[20] ≈ 1.037575254556690 atol=1e-8
+    ci2 = confint(f2)
+    @test ci2[1][1] ≈ -0.318073956754668 atol=1e-8
+    @test ci2[2][1] ≈ 1.107062891634995 atol=1e-8
+    @test ci2[1][20] ≈ -2.371771071486807 atol=1e-8
+    @test ci2[2][20] ≈ 1.266072266630027 atol=1e-8
 
     # Reproduce point estimates in Table 1 from Ramey and Zubairy (2018)
     # Compare estimates produced by ivreg2 in Stata replication files

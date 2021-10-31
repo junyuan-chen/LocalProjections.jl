@@ -6,8 +6,8 @@ using CodecZlib: GzipDecompressorStream
 using DataFrames
 using LinearAlgebra: I
 using LocalProjections: kron_fastl, kron_fastr, getscore, _geto,
-    ols, reg, VarName, _makeYX, _firststage, _lp, _toint, _toname,
-    _basismatrix, _makeYSr, _makeP
+    OLS, VarName, _makeYX, _firststage, _lp, _toint, _toname,
+    Ridge, _basismatrix, _makeYSr, _makeP
 using Tables: getcolumn
 
 function exampledata(name::Union{Symbol,String})
@@ -21,6 +21,7 @@ const tests = [
     "utils",
     "lp",
     "slp",
+    "vce",
     "irf"
 ]
 

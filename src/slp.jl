@@ -4,18 +4,18 @@ struct Ridge{TF<:AbstractFloat} <: RegressionModel
     P::Matrix{TF}
     Cy::Vector{TF}
     invCCP::Matrix{TF}
+    crossy::TF
+    crossC::Matrix{TF}
     Xs::Union{Vector{Matrix{TF}},Nothing}
     λ::TF
     θ::Vector{TF}
     resid::Vector{TF}
+    score::Matrix{TF}
     dof_res::TF
     dof_adj::Int
 end
 
-function ridge(y, C, P, Cy, invCCP, Xs, λ, θ, dof_res, dof_adj)
-    resid = y - C * θ
-    return Ridge(y, C, P, Cy, invCCP, Xs, λ, θ, resid, dof_res, dof_adj)
-end
+show(io::IO, ::Ridge) = print(io, "Ridge regression")
 
 """
     SearchCriterion
@@ -159,6 +159,7 @@ including estimates calculated for each parameter on the grid.
 - `gcv::Vector{TF}`: generalized cross validation errors.
 - `aic::Vector{TF}`: Akaike information criterion values.
 - `dof_fit::Vector{TF}`: degrees of freedom of the fit.
+- `dof_res::Vector{TF}`: residual degrees of freedom.
 """
 struct GridSearchResult{TF<:AbstractFloat} <: ModelSelectionResult
     i::Int
@@ -168,6 +169,7 @@ struct GridSearchResult{TF<:AbstractFloat} <: ModelSelectionResult
     gcv::Vector{TF}
     aic::Vector{TF}
     dof_fit::Vector{TF}
+    dof_res::Vector{TF}
 end
 
 """
@@ -217,11 +219,11 @@ Constructor for [`SmoothLP`](@ref).
 
 # Keywords
 - `search::ModelSelection=grid()`: method for generating alternative smoothing parameters.
-- `criterion::SearchCriterion=GCV()`: criterion for selecting the optimal parameter.
+- `criterion::SearchCriterion=LOOCV()`: criterion for selecting the optimal parameter.
 - `fullX::Bool=false`: whether regressor matrices not involved in smoothing are kept.
 """
 function SmoothLP(names, order::Int=3, ndiff::Int=3;
-        search::ModelSelection=grid(), criterion::SearchCriterion=GCV(), fullX::Bool=false)
+        search::ModelSelection=grid(), criterion::SearchCriterion=LOOCV(), fullX::Bool=false)
     names isa VarIndex && (names = (names,))
     names = VarIndex[n for n in names]
     return SmoothLP(names, order, ndiff, search, criterion, fullX)
@@ -238,12 +240,13 @@ end
 """
     SmoothLPResult{TF<:AbstractFloat, TS<:ModelSelectionResult} <: AbstractEstimatorResult
 
-Results from estimating a smooth local projection.
+Additional results from estimating a smooth local projection.
 See also [`SmoothLP`](@ref) and [`LocalProjectionResult`](@ref).
 
 # Fields
-- `θ::Vector{TF}`: coefficient estimates for B-splines.
-- `Σ::Vector{TF}`: variance-covariance estimates for B-splines.
+- `θ::Vector{TF}`: coefficient estimates for the B-splines.
+- `Σ::Vector{TF}`: variance-covariance estimates for the B-splines.
+- `bm::Matrix{TF}`: basis matrix of the B-splines.
 - `λ::TF`: the optimal smoothing parameter from model selection.
 - `loocv::TF`: leave-one-out cross validation error.
 - `rss::TF`: residual sum of squares.
@@ -252,11 +255,12 @@ See also [`SmoothLP`](@ref) and [`LocalProjectionResult`](@ref).
 - `dof_fit::TF`: degree of freedom of the fit.
 - `dof_res::TF`: residual degree of freedom.
 - `search::TS`: additional results from model selection.
-- `m::Ridge{TF}`: data for the ridge regression.
+- `m::Ridge{TF}`: data from the ridge regression.
 """
 struct SmoothLPResult{TF<:AbstractFloat, TS<:ModelSelectionResult} <: AbstractEstimatorResult
     θ::Vector{TF}
     Σ::Matrix{TF}
+    bm::Matrix{TF}
     λ::TF
     loocv::TF
     rss::TF
@@ -365,9 +369,9 @@ function _select(est::SmoothLP{<:GridSearch{DemmlerReinsch}}, y, C, crossy, cros
     θs = Matrix{TF}(undef, K, N)
     rss = Vector{TF}(undef, N)
     dof_fit = similar(rss)
-    fitted = similar(y)
     cve = similar(y)
     loocv = similar(rss)
+    dof_res = similar(rss)
     for i in 1:N
         λ = λs[i]
         d .= 1.0 .+ λ.*s
@@ -377,9 +381,11 @@ function _select(est::SmoothLP{<:GridSearch{DemmlerReinsch}}, y, C, crossy, cros
         _Sdiag!(Sdiag, A, d)
         θ = view(θs,:,i)
         mul!(θ, invRU, bd)
-        mul!(fitted, C, θ)
-        cve .= ((y .- fitted)./(1.0 .- Sdiag)).^2
+        mul!(cve, C, θ)
+        cve .= ((y .- cve)./(1.0 .- Sdiag)).^2
         loocv[i] = sum(cve)
+        d .= 1.0./d
+        dof_res[i] = T - 2.0*sum(d) + d'd
     end
     gcv = rss./(1.0.-dof_fit./T).^2
     aic = log.(rss) .+ 2.0.*dof_fit./T
@@ -390,8 +396,8 @@ function _select(est::SmoothLP{<:GridSearch{DemmlerReinsch}}, y, C, crossy, cros
     else
         _, il = findmin(aic)
     end
-    r = GridSearchResult(il, θs, loocv, rss, gcv, aic, dof_fit)
-    return λs[il], θs[:,il], loocv[il], rss[il], gcv[il], aic[il], dof_fit[il], r, Sdiag
+    r = GridSearchResult(il, θs, loocv, rss, gcv, aic, dof_fit, dof_res)
+    return λs[il], r, Sdiag
 end
 
 function _Sdiag!(Sdiag::Vector, C::Matrix, invCCP::Matrix)
@@ -414,9 +420,9 @@ function _select(est::SmoothLP{<:GridSearch{DirectSolve}}, y, C, crossy, crossC,
     θs = Matrix{TF}(undef, K, N)
     rss = Vector{TF}(undef, N)
     dof_fit = similar(rss)
-    fitted = similar(y)
     cve = similar(y)
     loocv = similar(rss)
+    dof_res = similar(rss)
     for i in 1:N
         λ = λs[i]
         CCP .= crossC .+ λ.*P
@@ -427,9 +433,10 @@ function _select(est::SmoothLP{<:GridSearch{DirectSolve}}, y, C, crossy, crossC,
         _Sdiag!(Sdiag, C, invCCP)
         rss[i] = crossy - 2.0 * Cy'θ + θ'*crossC*θ
         dof_fit[i] = sum(Sdiag)
-        mul!(fitted, C, θ)
-        cve .= ((y .- fitted)./(1.0 .- Sdiag)).^2
+        mul!(cve, C, θ)
+        cve .= ((y .- cve)./(1.0 .- Sdiag)).^2
         loocv[i] = sum(cve)
+        dof_res[i] = T - 2.0*dof_fit[i] + Sdiag'Sdiag
     end
     gcv = rss./(1.0.-dof_fit./T).^2
     aic = log.(rss) .+ 2.0.*dof_fit./T
@@ -440,8 +447,8 @@ function _select(est::SmoothLP{<:GridSearch{DirectSolve}}, y, C, crossy, crossC,
     else
         _, il = findmin(aic)
     end
-    r = GridSearchResult(il, θs, loocv, rss, gcv, aic, dof_fit)
-    return λs[il], θs[:,il], loocv[il], rss[il], gcv[il], aic[il], dof_fit[il], r, Sdiag
+    r = GridSearchResult(il, θs, loocv, rss, gcv, aic, dof_fit, dof_res)
+    return λs[il], r, Sdiag
 end
 
 function _est(est::SmoothLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce, subset,
@@ -482,25 +489,31 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce
     crossC = C'C
     Cy = C'y
     P = _makeP(ns*nb, est.ndiff; TF=TF)
-    λ, θ, loocv, rss, gcv, aic, dof_fit, selr, Sdiag =
-        _select(est, y, C, crossy, crossC, Cy, P)
+    λ, sr, Sdiag = _select(est, y, C, crossy, crossC, Cy, P)
     CCP = cholesky!(crossC + λ*P)
-    if !(est.search.algo isa DirectSolve)
+    if est.search isa GridSearch{DirectSolve}
+        l = sr.i
+        θ, loocv, rss, gcv, aic, dof_fit, dof_res = sr.θs[:,l], sr.loocv[l],
+            sr.rss[l], sr.gcv[l], sr.aic[l], sr.dof_fit[l], sr.dof_res[l]
+    else
         # Recalculate to ensure the accuracy of final estimates
         θ = CCP \ (Cy)
         rss = crossy - 2.0 * Cy'θ + θ'*crossC*θ
     end
+    resid = C * θ
+    resid .= y .- resid
     invCCP = inv!(CCP)
-    _Sdiag!(Sdiag, C, invCCP)
-    dof_fit = sum(Sdiag)
-    dof_res = Tall - 2.0*dof_fit + Sdiag'Sdiag
     if !(est.search.algo isa DirectSolve)
-        # For simplicity, loocv is not recalculated
+        _Sdiag!(Sdiag, C, invCCP)
+        dof_fit = sum(Sdiag)
+        dof_res = Tall - 2.0*dof_fit + Sdiag'Sdiag
+        loocv = sum((resid./(1.0.-Sdiag)).^2)
         gcv = rss/(1.0-dof_fit/Tall)^2
         aic = log(rss) + 2.0*dof_fit/Tall
     end
     B = permutedims(reshape(bm*reshape(θ,nb,ns), nhorz, ns, 1), (2,3,1))
-    m = ridge(y, C, P, Cy, invCCP, est.fullX ? Xs : nothing, λ, θ, dof_res, nx)
+    m = Ridge(y, C, P, Cy, invCCP, crossy, crossC, est.fullX ? Xs : nothing, λ, θ, resid,
+        getscore(C, resid), dof_res, nx)
     bms = repeat(bm, 1, ns)
     Σ = vcov(m, vce)
     Vfull = bms * Σ * bms'
@@ -510,11 +523,76 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce
         inds .+= 1
         V[:,:,h] = reshape(view(Vfull, inds, inds), ns, ns, 1)
     end
-    slpr = SmoothLPResult(θ, Σ, λ, loocv, rss, gcv, aic, dof_fit, dof_res, selr, m)
+    slpr = SmoothLPResult(θ, Σ, bm, λ, loocv, rss, gcv, aic, dof_fit, dof_res, sr, m)
     return B, V, T, slpr
 end
 
-_estimatortitle(::LocalProjectionResult{<:SmoothLP}) = "Estimator: Smooth Local Projection"
+function lp(r::LocalProjectionResult{<:SmoothLP}, vce::CovarianceEstimator)
+    ns = size(r.V, 1)
+    s = r.estres
+    Σ = vcov(s.m, vce)
+    bms = repeat(s.bm, 1, ns)
+    Vfull = bms * Σ * bms'
+    V = similar(r.V)
+    nhorz = length(r.T)
+    inds = [nhorz*(n-1) for n in 1:ns]
+    for h in 1:nhorz
+        inds .+= 1
+        V[:,:,h] = reshape(view(Vfull, inds, inds), ns, ns, 1)
+    end
+    slpr = SmoothLPResult(s.θ, Σ, s.bm, s.λ, s.loocv, s.rss, s.gcv, s.aic,
+        s.dof_fit, s.dof_res, s.search, s.m)
+    return LocalProjectionResult(r.B, V, r.T, r.est, slpr, vce,
+        r.ynames, r.xnames, r.wnames, r.lookupy, r.lookupx, r.lookupw,
+        r.nlag, r.minhorz, r.subset, r.normnames, r.normtars, r.normmults,
+        r.endonames, r.ivnames, r.firststagebyhorz, r.nocons)
+end
+
+function lp(r::LocalProjectionResult{<:SmoothLP}, λ::Real;
+        vce::Union{CovarianceEstimator, Nothing}=nothing)
+    m = r.estres.m
+    λ = convert(typeof(m.λ), λ)
+    Tall = length(m.y)
+    CCP = cholesky!(m.crossC + λ*m.P)
+    θ = CCP \ (m.Cy)
+    rss = m.crossy - 2.0 * m.Cy'θ + θ'*m.crossC*θ
+    resid = m.C * θ
+    resid .= m.y .- resid
+    invCCP = inv!(CCP)
+    Sdiag = similar(m.y)
+    _Sdiag!(Sdiag, m.C, invCCP)
+    dof_fit = sum(Sdiag)
+    dof_res = Tall - 2.0*dof_fit + Sdiag'Sdiag
+    loocv = sum((resid./(1.0.-Sdiag)).^2)
+    gcv = rss/(1.0-dof_fit/Tall)^2
+    aic = log(rss) + 2.0*dof_fit/Tall
+
+    bm = r.estres.bm
+    nb = size(bm, 2)
+    ns = length(r.est.names)
+    nhorz = length(r.T)
+    B = permutedims(reshape(bm*reshape(θ,nb,ns), nhorz, ns, 1), (2,3,1))
+    m1 = Ridge(m.y, m.C, m.P, m.Cy, invCCP, m.crossy, m.crossC, m.Xs, λ, θ, resid,
+        getscore(m.C, resid), dof_res, m.dof_adj)
+    bms = repeat(bm, 1, ns)
+    vce1 = vce===nothing ? r.vce : vce
+    Σ = vcov(m1, vce1)
+    Vfull = bms * Σ * bms'
+    V = similar(r.V)
+    inds = [nhorz*(n-1) for n in 1:ns]
+    for h in 1:nhorz
+        inds .+= 1
+        V[:,:,h] = reshape(view(Vfull, inds, inds), ns, ns, 1)
+    end
+    slpr = SmoothLPResult(θ, Σ, bm, λ, loocv, rss, gcv, aic, dof_fit, dof_res,
+        r.estres.search, m1)
+    return LocalProjectionResult(B, V, r.T, r.est, slpr, vce1,
+        r.ynames, r.xnames, r.wnames, r.lookupy, r.lookupx, r.lookupw,
+        r.nlag, r.minhorz, r.subset, r.normnames, r.normtars, r.normmults,
+        r.endonames, r.ivnames, r.firststagebyhorz, r.nocons)
+end
+
+_estimatortitle(::LocalProjectionResult{<:SmoothLP}) = "Smooth Local Projection"
 
 function _estimatorinfo(r::LocalProjectionResult{<:SmoothLP}, halfwidth::Int)
     info = ["Smoothing parameter" => TestStat(r.estres.λ),

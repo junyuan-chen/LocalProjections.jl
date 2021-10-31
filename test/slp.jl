@@ -1,3 +1,10 @@
+@testset "Ridge" begin
+    a2 = rand(2,2)
+    m = Ridge(rand(5), rand(5,2), a2, rand(2), a2, 1.0, a2, nothing, 1.0,
+        rand(2), rand(5), a2, 1.0, 1)
+    @test sprint(show, m) == "Ridge regression"
+end
+
 @testset "SearchCriterion" begin
     c = LOOCV()
     @test sprint(show, c) == "LOOCV"
@@ -103,12 +110,18 @@ end
     # Check estimates are close to OLS with low penalty
     df = exampledata(:gk)
     ns = (:logcpi, :logip, :ff, :ebp, :ff4_tc)
-    r0 = lp(df, :ebp, xnames=:ff4_tc, wnames=ns, nlag=12, nhorz=48)
+    r0 = lp(df, :ebp, xnames=:ff4_tc, wnames=ns, nlag=12, nhorz=48, vce=HRVCE())
     f0 = irf(r0, :ebp, :ff4_tc)
-    est = SmoothLP(:ff4_tc, search=grid(1e-8))
-    r1 = lp(est, df, :ebp, xnames=:ff4_tc, wnames=ns, nlag=12, nhorz=48)
+    est = SmoothLP(:ff4_tc, search=grid(1e-8), criterion=GCV())
+    r1 = lp(est, df, :ebp, xnames=:ff4_tc, wnames=ns, nlag=12, nhorz=48, vce=HRVCE())
     f1 = irf(r1, :ebp, :ff4_tc)
     @test f1.B ≈ f0.B atol=1e-4
+    # Check HR confidence interval
+    ci1 = confint(f1)
+    @test ci1[1][1] ≈ -0.04758915684832821
+    @test ci1[2][1] ≈ 0.8758551271581806
+    @test ci1[1][10] ≈ -0.35800938178031794
+    @test ci1[2][10] ≈ 2.265871824705655
 
     @test sprint(show, MIME("text/plain"), r1) == """
         LocalProjectionResult with 12 lags over 48 horizons:
@@ -119,7 +132,7 @@ end
         Regressors:            ff4_tc constant    
         Lagged controls:                                      logcpi logip ff ebp ff4_tc
         ────────────────────────────────────────────────────────────────────────────────
-        Estimator: Smooth Local Projection
+        Smooth Local Projection
         ────────────────────────────────────────────────────────────────────────────────
         Smoothing parameter:              0.00    Smoothed regressor:             ff4_tc
         Polynomial order:                    3    Finite difference order:             3
@@ -148,15 +161,25 @@ end
     @test B1[19] ≈ 0.096090022750258 atol=1e-10
     @test B1[20] ≈ -0.065709407174569 atol=1e-10
 
+    # Check EWC confidence interval
+    ci1 = confint(f1)
+    @test ci1[1][1] ≈ -0.8571544691033884
+    @test ci1[2][1] ≈ 0.3850826992477342
+    @test ci1[1][10] ≈ 0.020165100998330715
+    @test ci1[2][10] ≈ 0.34552900750920656
+
     # Compare results based on DemmlerReinsch and DirectSolve
-    est1 = SmoothLP(:ir, 3, 2, search=grid(194.0.*(1:0.5:10)), criterion=LOOCV())
+    gbb = 194.0.*(1:0.5:10)
+    est1 = SmoothLP(:ir, 3, 2, search=grid(gbb), criterion=LOOCV())
     r1 = lp(est1, df, :yg, xnames=ns, wnames=ns, nlag=4, nhorz=20, minhorz=1)
     @test r1.estres.λ == 194
     @test r1.estres.search.i == 1
-    est2 = SmoothLP(:ir, 3, 2, search=grid(194.0.*(1:0.5:10), algo=DirectSolve()), criterion=GCV())
+    @test r1.estres.rss ≈ sum(r1.estres.m.resid.^2)
+    est2 = SmoothLP(:ir, 3, 2, search=grid(gbb, algo=DirectSolve()), criterion=GCV())
     r2 = lp(est2, df, :yg, xnames=ns, wnames=ns, nlag=4, nhorz=20, minhorz=1)
     @test r2.estres.λ == 194
     @test r2.estres.search.i == 1
+    @test r2.estres.rss ≈ sum(r2.estres.m.resid.^2)
     @test r1.estres.search.θs ≈ r2.estres.search.θs atol=1e-2
     @test r1.estres.search.loocv ≈ r2.estres.search.loocv atol=1e-1
     @test r1.estres.search.rss ≈ r2.estres.search.rss atol=1e-1
@@ -166,7 +189,7 @@ end
     # Check the recalculated final estimates are the same
     @test r1.estres.θ ≈ r2.estres.θ
     @test r1.estres.Σ ≈ r2.estres.Σ
-    # loocv is not recalculated
+    @test r1.estres.loocv ≈ r2.estres.loocv
     @test r1.estres.rss ≈ r2.estres.rss
     @test r1.estres.gcv ≈ r2.estres.gcv
     @test r1.estres.aic ≈ r2.estres.aic
@@ -181,6 +204,28 @@ end
     f3 = irf(r3, :yg, :ir)
     @test f3.B ≈ f0.B atol=1e-8
 
+    # Make a benchmark for comparisons
+    est0 = SmoothLP(:ir, 3, 2, search=grid(194.0))
+    r0 = lp(est0, df, :yg, xnames=ns, wnames=ns, nlag=4, nhorz=20, minhorz=1, vce=HRVCE())
+    r4 = lp(r1, HRVCE())
+    @test r4.B ≈ r1.B
+    @test r4.V ≈ r0.V
+    f4 = irf(r4, :yg, :ir)
+    ci4 = confint(f4)
+    @test ci4[1][1] ≈ -0.6790290214946426
+    @test ci4[2][1] ≈ 0.20695725163898837
+    @test ci4[1][10] ≈ -0.06529955673073387
+    @test ci4[2][10] ≈ 0.4309936652382712
+
+    r5 = lp(r1, 194.0, vce=HRVCE())
+    @test r5.B ≈ r1.B
+    @test r5.V ≈ r0.V
+    est0 = SmoothLP(:ir, 3, 2, search=grid(30))
+    r0 = lp(est0, df, :yg, xnames=ns, wnames=ns, nlag=4, nhorz=20, minhorz=1, vce=HRVCE())
+    r6 = lp(r1, 30, vce=HRVCE())
+    @test r6.B ≈ r0.B
+    @test r6.V ≈ r0.V
+
     @test sprint(show, MIME("text/plain"), r1) == """
         LocalProjectionResult with 4 lags over 20 horizons:
         ────────────────────────────────────────────────────────────────────────────────
@@ -189,7 +234,7 @@ end
         Outcome variable:                   yg    Minimum horizon:                     1
         Regressors:          ir pi yg constant    Lagged controls:              ir pi yg
         ────────────────────────────────────────────────────────────────────────────────
-        Estimator: Smooth Local Projection
+        Smooth Local Projection
         ────────────────────────────────────────────────────────────────────────────────
         Smoothing parameter:            194.00    Smoothed regressor:                 ir
         Polynomial order:                    3    Finite difference order:             2

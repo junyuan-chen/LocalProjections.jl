@@ -12,7 +12,7 @@ coef(f::ImpulseResponse) = f.B
 stderror(f::ImpulseResponse) = f.SE
 
 function confint(f::ImpulseResponse; level::Real=0.9, horz=Colon())
-    scale = norminvcdf(1 - (1 - level) / 2)
+    scale = criticalvalue.(Ref(f.vce), level, view(f.T, horz))
     se = stderror(f)[horz]
     b = coef(f)[horz]
     return b .- scale .* se, b .+ scale .* se
@@ -45,7 +45,7 @@ function coeftable(f::ImpulseResponse;
         cnames = f.minhorz:f.minhorz+H-1
     end
     ts = cf ./ se
-    pv = 2 .* normccdf.(abs.(ts))
+    pv = pvalue.(Ref(f.vce), ts, view(f.T, horz))
     levstr = isinteger(level*100) ? string(Integer(level*100)) : string(level*100)
     return CoefTable(Vector[cf, se, ts, pv, cil, ciu],
         ["Estimate", "Std. Error", "z", "Pr(>|z|)", "Lower $levstr%", "Upper $levstr%"],

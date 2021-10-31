@@ -1,32 +1,28 @@
 struct OLS{TF<:AbstractFloat} <: RegressionModel
-    x::Matrix{TF}
-    invxx::Matrix{TF}
+    X::Matrix{TF}
+    invXX::Matrix{TF}
     coef::VecOrMat{TF}
     resid::VecOrMat{TF}
     score::Matrix{TF}
 end
 
-function ols(Y::AbstractMatrix, X::AbstractMatrix)
-    x = convert(Matrix, X)
-    crossx = cholesky!(x'x)
-    coef = x'Y
+function OLS(Y::AbstractMatrix, X::AbstractMatrix)
+    X = convert(Matrix, X)
+    crossx = cholesky!(X'X)
+    coef = X'Y
     ldiv!(crossx, coef)
-    invxx = inv!(crossx)
-    resid = Y - x * coef
-    score = getscore(x, resid)
-    return OLS(x, invxx, coef, resid, score)
+    invXX = inv!(crossx)
+    resid = X * coef
+    resid .= Y .- resid
+    score = getscore(X, resid)
+    return OLS(X, invXX, coef, resid, score)
 end
 
-modelmatrix(m::OLS) = m.x
+modelmatrix(m::OLS) = m.X
 coef(m::OLS) = m.coef
 residuals(m::OLS) = m.resid
 
-reg(Y::AbstractMatrix, X::AbstractMatrix, vce::Nothing) = (coef(ols(Y, X)), nothing)
-
-function reg(Y::AbstractMatrix, X::AbstractMatrix, vce::CovarianceEstimator)
-    m = ols(Y, X)
-    return coef(m), vcov(m, vce)
-end
+show(io::IO, ::OLS) = print(io, "OLS regression")
 
 """
     AbstractEstimator
@@ -54,6 +50,19 @@ show(io::IO, ::MIME"text/plain", ::LeastSquareLP) =
     print(io, "Ordinary Least Square Local Projection")
 
 abstract type AbstractEstimatorResult end
+
+"""
+    LeastSquareLPResult{TF<:AbstractFloat} <: AbstractEstimatorResult
+
+Additional results from estimating lease-square local projections.
+See also [`LeastSquareLP`](@ref) and [`LocalProjectionResult`](@ref).
+
+# Field
+- `ms::Vector{OLS{TF}}`: data from the OLS regressions.
+"""
+struct LeastSquareLPResult{TF<:AbstractFloat} <: AbstractEstimatorResult
+    ms::Vector{OLS{TF}}
+end
 
 """
     VarName
@@ -234,7 +243,8 @@ end
 function _lp(ys, xs, ws, nlag::Int, horz::Int, vce::Union{CovarianceEstimator,Nothing},
         subset::Union{BitVector,Nothing}; TF=Float64)
     Y, X, T, esampleT = _makeYX(ys, xs, ws, nlag, horz, subset; TF=TF)
-    return reg(Y, X, vce)..., T
+    m = OLS(Y, X)
+    return coef(m), vcov(m, vce), T, m
 end
 
 function _normalize!(data, normalize, xnames, xs, ws, nlag, minhorz, subset; TF=Float64)
@@ -248,7 +258,7 @@ function _normalize!(data, normalize, xnames, xs, ws, nlag, minhorz, subset; TF=
     end
     nnames = normalize isa Pair ? (normalize[2],) : (p[2] for p in normalize)
     yn = Any[getcolumn(data, n) for n in nnames]
-    Bn, Vn, Tn = _lp(yn, xs, ws, nlag, minhorz, nothing, subset; TF=TF)
+    Bn, Vn, Tn, _ = _lp(yn, xs, ws, nlag, minhorz, nothing, subset; TF=TF)
     normmults = TF[Bn[ix,i] for (i,ix) in enumerate(ix_s)]
     xs[ix_s] .*= normmults
     normnames = VarName[_toname(data, n) for n in snames]
@@ -316,16 +326,17 @@ function _est(::LeastSquareLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, v
     B = Array{TF,3}(undef, nr, ny, nhorz)
     V = Array{TF,3}(undef, nr*ny, nr*ny, nhorz)
     T = Vector{Int}(undef, nhorz)
+    M = Vector{OLS{TF}}(undef, nhorz)
     for h in minhorz:minhorz+nhorz-1
         if iv !== nothing && firststagebyhorz
             xs[ix_iv] .= _firststage(yfs, xfs, ws, nlag, h, subset; TF=TF)
         end
         i = h - minhorz + 1
-        Bh, Vh, T[i] = _lp(ys, xs, ws, nlag, h, vce, subset; TF=TF)
+        Bh, Vh, T[i], M[i] = _lp(ys, xs, ws, nlag, h, vce, subset; TF=TF)
         B[:,:,i] = reshape(Bh, nr, ny, 1)
         V[:,:,i] = reshape(Vh, nr*ny, nr*ny, 1)
     end
-    return B, V, T, nothing
+    return B, V, T, LeastSquareLPResult(M)
 end
 
 lp(data, ynames; kwargs...) = lp(LeastSquareLP(), data, ynames; kwargs...)
@@ -334,7 +345,7 @@ function lp(estimator, data, ynames;
         xnames=(), wnames=(), nlag::Int=1, nhorz::Int=1, minhorz::Int=0,
         normalize::Union{VarIndexPair,Vector{VarIndexPair},Nothing}=nothing,
         iv::Union{Pair,Nothing}=nothing, firststagebyhorz::Bool=false,
-        vce::CovarianceEstimator=HRVCE(),
+        vce::CovarianceEstimator=HARVCE(EWC()),
         subset::Union{BitVector,Nothing}=nothing,
         addylag::Bool=true, nocons::Bool=false, TF::Type=Float64)
 
@@ -363,9 +374,21 @@ function lp(estimator, data, ynames;
         endonames, ivnames, firststagebyhorz, nocons)
 end
 
+function lp(r::LocalProjectionResult{LeastSquareLP}, vce::CovarianceEstimator)
+    V = similar(r.V)
+    K = size(V, 1)
+    for h in 1:length(r.T)
+        V[:,:,h] = reshape(vcov(r.estres.ms[h], vce), K, K, 1)
+    end
+    return LocalProjectionResult(r.B, V, r.T, r.est, r.estres, vce,
+        r.ynames, r.xnames, r.wnames, r.lookupy, r.lookupx, r.lookupw,
+        r.nlag, r.minhorz, r.subset, r.normnames, r.normtars, r.normmults,
+        r.endonames, r.ivnames, r.firststagebyhorz, r.nocons)
+end
+
 show(io::IO, r::LocalProjectionResult) = print(io, typeof(r).name.name)
 
-_vartitle(r::LocalProjectionResult) = "Variable Specifications"
+_vartitle(::LocalProjectionResult) = "Variable Specifications"
 
 function _varinfo(r::LocalProjectionResult, halfwidth::Int)
     namex = "Regressor"*(length(r.xnames) > 1 ? "s" : "")
