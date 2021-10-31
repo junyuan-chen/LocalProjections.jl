@@ -223,7 +223,7 @@ end
     @test r1.estres.dof_fit ≈ r2.estres.dof_fit
     @test r1.estres.dof_res ≈ r2.estres.dof_res
 
-    # Compare estimates from LeastSquareLP
+    # Compare estimates from LeastSquaresLP
     r0 = lp(df, :yg, xnames=ns, wnames=ns, nlag=4, nhorz=20, minhorz=1)
     f0 = irf(r0, :yg, :ir)
     est3 = SmoothLP(:ir, 3, 2, search=grid(1e-8), criterion=AIC())

@@ -21,9 +21,9 @@ export hamilton_filter,
 
        OLS,
        AbstractEstimator,
-       LeastSquareLP,
+       LeastSquaresLP,
        AbstractEstimatorResult,
-       LeastSquareLPResult,
+       LeastSquaresLPResult,
        LocalProjectionResult,
        lp,
 

@@ -1,7 +1,7 @@
 """
     OLS{TF<:AbstractFloat} <: RegressionModel
 
-Data from an ordinary least-square regression.
+Data from an ordinary least squares regression.
 """
 struct OLS{TF<:AbstractFloat} <: RegressionModel
     X::Matrix{TF}
@@ -41,18 +41,18 @@ abstract type AbstractEstimator end
 show(io::IO, e::AbstractEstimator) = print(io, typeof(e).name.name)
 
 """
-    LeastSquareLP <: AbstractEstimator
+    LeastSquaresLP <: AbstractEstimator
 
-Ordinary least square estimator for local projecitons.
+Ordinary least squares estimator for local projecitons.
 
 # Reference
 Jordà, Òscar. 2005. "Estimation and Inference of Impulse Responses by Local Projections."
 American Economic Review 95 (1): 161-182.
 """
-struct LeastSquareLP <: AbstractEstimator end
+struct LeastSquaresLP <: AbstractEstimator end
 
-show(io::IO, ::MIME"text/plain", ::LeastSquareLP) =
-    print(io, "Ordinary least-square local projection")
+show(io::IO, ::MIME"text/plain", ::LeastSquaresLP) =
+    print(io, "Ordinary least squares local projection")
 
 """
     AbstractEstimatorResult
@@ -64,15 +64,15 @@ abstract type AbstractEstimatorResult end
 show(io::IO, er::AbstractEstimatorResult) = print(io, typeof(er).name.name)
 
 """
-    LeastSquareLPResult{TF<:AbstractFloat} <: AbstractEstimatorResult
+    LeastSquaresLPResult{TF<:AbstractFloat} <: AbstractEstimatorResult
 
-Additional results from estimating least-square local projections.
-See also [`LeastSquareLP`](@ref) and [`LocalProjectionResult`](@ref).
+Additional results from estimating least squares local projections.
+See also [`LeastSquaresLP`](@ref) and [`LocalProjectionResult`](@ref).
 
 # Field
 - `ms::Vector{OLS{TF}}`: data from the OLS regressions.
 """
-struct LeastSquareLPResult{TF<:AbstractFloat} <: AbstractEstimatorResult
+struct LeastSquaresLPResult{TF<:AbstractFloat} <: AbstractEstimatorResult
     ms::Vector{OLS{TF}}
 end
 
@@ -353,7 +353,7 @@ end
 _iv!(data, iv::Nothing, firststagebyhorz, xnames, xs, ws, nlag, minhorz, subset; TF=Float64) =
     (nothing, nothing, nothing, nothing, nothing)
 
-function _est(::LeastSquareLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce, subset,
+function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce, subset,
         iv, ix_iv, yfs, xfs, firststagebyhorz; TF=Float64)
     ny = length(ys)
     nr = length(xs) + length(ws)*nlag
@@ -370,7 +370,7 @@ function _est(::LeastSquareLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, v
         B[:,:,i] = reshape(Bh, nr, ny, 1)
         V[:,:,i] = reshape(Vh, nr*ny, nr*ny, 1)
     end
-    return B, V, T, LeastSquareLPResult(M)
+    return B, V, T, LeastSquaresLPResult(M)
 end
 
 """
@@ -378,7 +378,7 @@ end
 
 Estimate local projections with the specified `estimator`
 for outcome variable(s) with column name(s) `ynames` in `data` table.
-If the `estimator` is not specified, [`LeastSquareLP`](@ref) is assumed.
+If the `estimator` is not specified, [`LeastSquaresLP`](@ref) is assumed.
 The input `data` must be `Tables.jl`-compatible.
 
 # Keywords
@@ -429,14 +429,14 @@ function lp(estimator, data, ynames;
         endonames, ivnames, firststagebyhorz, nocons)
 end
 
-lp(data, ynames; kwargs...) = lp(LeastSquareLP(), data, ynames; kwargs...)
+lp(data, ynames; kwargs...) = lp(LeastSquaresLP(), data, ynames; kwargs...)
 
 """
     lp(r::LocalProjectionResult, vce::CovarianceEstimator)
 
 Reestimate the variance-covariance matrices with `vce`.
 """
-function lp(r::LocalProjectionResult{LeastSquareLP}, vce::CovarianceEstimator)
+function lp(r::LocalProjectionResult{LeastSquaresLP}, vce::CovarianceEstimator)
     V = similar(r.V)
     K = size(V, 1)
     for h in 1:length(r.T)

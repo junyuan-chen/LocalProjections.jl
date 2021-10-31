@@ -11,21 +11,21 @@
     @test sprint(show, m) == "OLS regression"
 end
 
-@testset "LeastSquareLP" begin
-    e = LeastSquareLP()
-    @test sprint(show, e) == "LeastSquareLP"
-    @test sprint(show, MIME("text/plain"), e) == "Ordinary least-square local projection"
+@testset "LeastSquaresLP" begin
+    e = LeastSquaresLP()
+    @test sprint(show, e) == "LeastSquaresLP"
+    @test sprint(show, MIME("text/plain"), e) == "Ordinary least squares local projection"
 end
 
-@testset "LeastSquareLPResult" begin
-    er = LeastSquareLPResult([OLS(rand(5), rand(5,2))])
-    @test sprint(show, er) == "LeastSquareLPResult"
+@testset "LeastSquaresLPResult" begin
+    er = LeastSquaresLPResult([OLS(rand(5), rand(5,2))])
+    @test sprint(show, er) == "LeastSquaresLPResult"
 end
 
 @testset "LocalProjectionResult" begin
     B = cat(randn(5,2,1), randn(5,2,1); dims=3)
     V = cat(randn(10,10), randn(10,10); dims=3)
-    r = LocalProjectionResult(B, V, [1,2], LeastSquareLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
+    r = LocalProjectionResult(B, V, [1,2], LeastSquaresLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
     @test coef(r, 1, :x) == B[1,1,1]
     @test coef(r, 2, :w1, yname=:y2, lag=1) == B[2,2,2]
     @test coef(r, 2, :w1, lag=2) == B[4,1,2]
@@ -44,7 +44,7 @@ end
         Outcome variables:              y1 y2    Minimum horizon:                    0
         Regressor:                          x    Lagged controls:                w1 w2
         ──────────────────────────────────────────────────────────────────────────────"""
-    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquareLP(), nothing, HRVCE(), VarName[:y], VarName[], VarName[:w], Dict{VarName,Int}(:y=>1), Dict{VarName,Int}(), Dict{VarName,Int}(:w=>1), 1, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
+    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[:y], VarName[], VarName[:w], Dict{VarName,Int}(:y=>1), Dict{VarName,Int}(), Dict{VarName,Int}(:w=>1), 1, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 1 lag over 1 horizon:
         ──────────────────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ end
         Outcome variable:                   y    Minimum horizon:                    0
         Regressor:                               Lagged control:                     w
         ──────────────────────────────────────────────────────────────────────────────"""
-    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquareLP(), nothing, HRVCE(), VarName[Cum(:y)], VarName[Cum(:x)], VarName[:w], Dict{VarName,Int}(Cum(:y)=>1), Dict{VarName,Int}(Cum(:x)=>1), Dict{VarName,Int}(:w=>1), 1, 0, nothing, nothing, nothing, nothing, VarName[Cum(:x)], VarName[:z1,:z2], false, true)
+    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[Cum(:y)], VarName[Cum(:x)], VarName[:w], Dict{VarName,Int}(Cum(:y)=>1), Dict{VarName,Int}(Cum(:x)=>1), Dict{VarName,Int}(:w=>1), 1, 0, nothing, nothing, nothing, nothing, VarName[Cum(:x)], VarName[:z1,:z2], false, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 1 lag over 1 horizon:
         ──────────────────────────────────────────────────────────────────────────────
