@@ -1,3 +1,8 @@
+"""
+    ImpulseResponse{TF<:AbstractFloat, VCE<:CovarianceEstimator} <: StatisticalModel
+
+Estimates for an impulse response function.
+"""
 struct ImpulseResponse{TF<:AbstractFloat, VCE<:CovarianceEstimator} <: StatisticalModel
     B::Vector{TF}
     SE::Vector{TF}
@@ -18,6 +23,13 @@ function confint(f::ImpulseResponse; level::Real=0.9, horz=Colon())
     return b .- scale .* se, b .+ scale .* se
 end
 
+"""
+    irf(r::LocalProjectionResult, yname::VarName, xwname::VarName; lag::Int=0)
+
+Return the [`ImpulseResponse`](@ref) of outcome variable `yname`
+with respect to variable `xwname` based on the estimation result `r`.
+If `lag` is not specified, `xwname` is assumed to be contemporaneous.
+"""
 function irf(r::LocalProjectionResult, yname::VarName, xwname::VarName; lag::Int=0)
     TF = typeof(r).parameters[4]
     H = length(r.T)

@@ -11,9 +11,8 @@ using LocalProjections: kron_fastl, kron_fastr, getscore, _geto,
 using Tables: getcolumn
 
 function exampledata(name::Union{Symbol,String})
-    path = (@__DIR__)*"/../data/$(name).csv.gz"
     # Need to allow CSV v0.8 to work
-    f = open(path) |> GzipDecompressorStream |> read |> CSV.File
+    f = open(datafile(name)) |> GzipDecompressorStream |> read |> CSV.File
     return DataFrame(f, copycols=true)
 end
 

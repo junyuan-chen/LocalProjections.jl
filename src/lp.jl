@@ -1,3 +1,8 @@
+"""
+    OLS{TF<:AbstractFloat} <: RegressionModel
+
+Data from an ordinary least-square regression.
+"""
 struct OLS{TF<:AbstractFloat} <: RegressionModel
     X::Matrix{TF}
     invXX::Matrix{TF}
@@ -6,7 +11,7 @@ struct OLS{TF<:AbstractFloat} <: RegressionModel
     score::Matrix{TF}
 end
 
-function OLS(Y::AbstractMatrix, X::AbstractMatrix)
+function OLS(Y::AbstractVecOrMat, X::AbstractMatrix)
     X = convert(Matrix, X)
     crossx = cholesky!(X'X)
     coef = X'Y
@@ -47,14 +52,21 @@ American Economic Review 95 (1): 161-182.
 struct LeastSquareLP <: AbstractEstimator end
 
 show(io::IO, ::MIME"text/plain", ::LeastSquareLP) =
-    print(io, "Ordinary Least Square Local Projection")
+    print(io, "Ordinary least-square local projection")
 
+"""
+    AbstractEstimatorResult
+
+Supertype for all estimator-specific additional results.
+"""
 abstract type AbstractEstimatorResult end
+
+show(io::IO, er::AbstractEstimatorResult) = print(io, typeof(er).name.name)
 
 """
     LeastSquareLPResult{TF<:AbstractFloat} <: AbstractEstimatorResult
 
-Additional results from estimating lease-square local projections.
+Additional results from estimating least-square local projections.
 See also [`LeastSquareLP`](@ref) and [`LocalProjectionResult`](@ref).
 
 # Field
@@ -103,6 +115,15 @@ struct LocalProjectionResult{TE<:AbstractEstimator,
     nocons::Bool
 end
 
+"""
+    coef(r::LocalProjectionResult, horz::Int, xwname::VarName; kwargs...)
+
+Return the coefficient estimate at horizon `horz` for variable with column name `xwname`.
+
+# Keywords
+- `yname::VarName=r.ynames[1]`: name of the outcome variable.
+- `lag::Int=0`: lag of variable `xwname`; being 0 means the variable is contemporaneous.
+"""
 function coef(r::LocalProjectionResult, horz::Int, xwname::VarName;
         yname::VarName=r.ynames[1], lag::Int=0)
     if lag > 0
@@ -113,6 +134,19 @@ function coef(r::LocalProjectionResult, horz::Int, xwname::VarName;
     end
 end
 
+"""
+    vcov(r::LocalProjectionResult, horz::Int, xwname1::VarName; kwargs...)
+
+Return the variance of the estimate at horizon `horz` for variable with column name `xwname1`.
+If `xwname2` is specified, return the covariance between `xwname1` and `xwname2`.
+
+# Keywords
+- `yname1::VarName=r.ynames[1]`: name of the outcome variable for `xwname1`.
+- `lag1::Int=0`: lag of variable `xwname1`; being 0 means the variable is contemporaneous.
+- `xwname2::VarName=xwname1`: the second variable involved in the covariance.
+- `yname2::VarName=yname1`: name of the outcome variable for `xwname1`.
+- `lag2::Int=lag1`: lag of variable `xwname2`; being 0 means the variable is contemporaneous.
+"""
 function vcov(r::LocalProjectionResult, horz::Int, xwname1::VarName;
         yname1::VarName=r.ynames[1], lag1::Int=0, xwname2::VarName=xwname1,
         yname2::VarName=yname1, lag2::Int=lag1)
@@ -339,10 +373,31 @@ function _est(::LeastSquareLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, v
     return B, V, T, LeastSquareLPResult(M)
 end
 
-lp(data, ynames; kwargs...) = lp(LeastSquareLP(), data, ynames; kwargs...)
+"""
+    lp([estimator], data, ynames; kwargs...)
 
+Estimate local projections with the specified `estimator`
+for outcome variable(s) with column name(s) `ynames` in `data` table.
+If the `estimator` is not specified, [`LeastSquareLP`](@ref) is assumed.
+The input `data` must be `Tables.jl`-compatible.
+
+# Keywords
+- `xnames=()`: indices of contemporaneous regressors from `data`.
+- `wnames=()`: indices of lagged control variables from `data`.
+- `nlag::Int=4`: number of lags to be included for the lagged control variables.
+- `nhorz::Int=1`: total number of horizons to be estimated.
+- `minhorz::Int=0`: the minimum horizon involved in estimation.
+- `normalize::Union{VarIndexPair,Vector{VarIndexPair},Nothing}=nothing`: normalize the magnitude of the specified regressor(s) based on their initial impact on the respective targeted outcome variable.
+- `iv::Union{Pair,Nothing}=nothing`: endogenous varable(s) paired with instrument(s).
+- `firststagebyhorz::Bool=false`: estimate the first-stage regression separately for each horizon.
+- `vce::CovarianceEstimator=HARVCE(EWC())`: the variance-covariance estimator.
+- `subset::Union{BitVector,Nothing}=nothing`: subset of `data` to be used for estimation.
+- `addylag::Bool=true`: include lags of the outcome variable(s).
+- `nocons::Bool=false`: do not add the constant term.
+- `TF::Type=Float64`: numeric type used for estimation.
+"""
 function lp(estimator, data, ynames;
-        xnames=(), wnames=(), nlag::Int=1, nhorz::Int=1, minhorz::Int=0,
+        xnames=(), wnames=(), nlag::Int=4, nhorz::Int=1, minhorz::Int=0,
         normalize::Union{VarIndexPair,Vector{VarIndexPair},Nothing}=nothing,
         iv::Union{Pair,Nothing}=nothing, firststagebyhorz::Bool=false,
         vce::CovarianceEstimator=HARVCE(EWC()),
@@ -374,6 +429,13 @@ function lp(estimator, data, ynames;
         endonames, ivnames, firststagebyhorz, nocons)
 end
 
+lp(data, ynames; kwargs...) = lp(LeastSquareLP(), data, ynames; kwargs...)
+
+"""
+    lp(r::LocalProjectionResult, vce::CovarianceEstimator)
+
+Reestimate the variance-covariance matrices with `vce`.
+"""
 function lp(r::LocalProjectionResult{LeastSquareLP}, vce::CovarianceEstimator)
     V = similar(r.V)
     K = size(V, 1)
@@ -392,21 +454,21 @@ _vartitle(::LocalProjectionResult) = "Variable Specifications"
 
 function _varinfo(r::LocalProjectionResult, halfwidth::Int)
     namex = "Regressor"*(length(r.xnames) > 1 ? "s" : "")
-    xs = join(string.(r.xnames), " ")
+    xs = join(r.xnames, " ")
     namex = length(namex) + length(xs) > halfwidth ? (namex,) : namex
     namew = "Lagged control"*(length(r.wnames) > 1 ? "s" : "")
-    ws = join(string.(r.wnames), " ")
+    ws = join(r.wnames, " ")
     namew = length(namew) + length(ws) > halfwidth ? (namew,) : namew
     info = Pair[
-        "Outcome variable"*(length(r.ynames) > 1 ? "s" : "") => join(string.(r.ynames), " "),
-        "Minimum horizon" => string(r.minhorz),
+        "Outcome variable"*(length(r.ynames) > 1 ? "s" : "") => join(r.ynames, " "),
+        "Minimum horizon" => r.minhorz,
         namex => xs,
         namew => ws]
     if r.endonames !== nothing
         push!(info, "Endogenous variable"*(length(r.endonames) > 1 ? "s" : "") =>
-            join(string.(r.endonames), " "),
+            join(r.endonames, " "),
             "Instrument"*(length(r.ivnames) > 1 ? "s" : "") =>
-            join(string.(r.ivnames), " "))
+            join(r.ivnames, " "))
     end
     return info
 end
@@ -415,7 +477,7 @@ _estimatortitle(::LocalProjectionResult) = nothing
 _estimatorinfo(::LocalProjectionResult, ::Int) = nothing
 
 function show(io::IO, ::MIME"text/plain", r::LocalProjectionResult;
-        totalwidth::Int=80, interwidth::Int=4+mod(totalwidth,2))
+        totalwidth::Int=78, interwidth::Int=4+mod(totalwidth,2))
     H = length(r.T)
     print(io, "$(typeof(r).name.name) with $(r.nlag) lag")
     print(io, r.nlag > 1 ? "s " : " ", "over $H horizon")

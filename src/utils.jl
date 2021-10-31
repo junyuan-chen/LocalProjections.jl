@@ -226,3 +226,10 @@ function vec(c::Cum{<:AbstractVector}, subset::Union{BitVector,Nothing},
     end
     return out
 end
+
+"""
+    datafile(name::Union{Symbol,String})
+
+Return the file path of the example data file named `name`.csv.gz.
+"""
+datafile(name::Union{Symbol,String}) = (@__DIR__)*"/../data/$(name).csv.gz"

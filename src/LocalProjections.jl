@@ -2,8 +2,8 @@ module LocalProjections
 
 using BSplines: BSplineBasis, basismatrix
 using FFTW: fft!
-using LinearAlgebra: cholesky!, inv!, svd!, ldiv!, mul!, I
-using StatsBase: CovarianceEstimator, StatisticalModel, RegressionModel, CoefTable, TestStat
+using LinearAlgebra: I, cholesky!, svd!, ldiv!, inv!, mul!
+using StatsBase: CovarianceEstimator, RegressionModel, StatisticalModel, CoefTable, TestStat
 using StatsFuns: normccdf, norminvccdf, tdistccdf, tdistinvccdf
 using Tables
 
@@ -17,7 +17,9 @@ export coef, vcov, stderror, confint, coeftable, modelmatrix, residuals
 export hamilton_filter,
        TransformedVar,
        Cum,
+       datafile,
 
+       OLS,
        AbstractEstimator,
        LeastSquareLP,
        AbstractEstimatorResult,
@@ -25,6 +27,7 @@ export hamilton_filter,
        LocalProjectionResult,
        lp,
 
+       Ridge,
        SearchCriterion,
        LOOCV,
        GCV,

@@ -14,7 +14,12 @@ end
 @testset "LeastSquareLP" begin
     e = LeastSquareLP()
     @test sprint(show, e) == "LeastSquareLP"
-    @test sprint(show, MIME("text/plain"), e) == "Ordinary Least Square Local Projection"
+    @test sprint(show, MIME("text/plain"), e) == "Ordinary least-square local projection"
+end
+
+@testset "LeastSquareLPResult" begin
+    er = LeastSquareLPResult([OLS(rand(5), rand(5,2))])
+    @test sprint(show, er) == "LeastSquareLPResult"
 end
 
 @testset "LocalProjectionResult" begin
@@ -33,31 +38,31 @@ end
     @test sprint(show, r) == "LocalProjectionResult"
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 2 lags over 2 horizons:
-        ────────────────────────────────────────────────────────────────────────────────
+        ──────────────────────────────────────────────────────────────────────────────
         Variable Specifications
-        ────────────────────────────────────────────────────────────────────────────────
-        Outcome variables:               y1 y2    Minimum horizon:                     0
-        Regressor:                           x    Lagged controls:                 w1 w2
-        ────────────────────────────────────────────────────────────────────────────────"""
+        ──────────────────────────────────────────────────────────────────────────────
+        Outcome variables:              y1 y2    Minimum horizon:                    0
+        Regressor:                          x    Lagged controls:                w1 w2
+        ──────────────────────────────────────────────────────────────────────────────"""
     r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquareLP(), nothing, HRVCE(), VarName[:y], VarName[], VarName[:w], Dict{VarName,Int}(:y=>1), Dict{VarName,Int}(), Dict{VarName,Int}(:w=>1), 1, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 1 lag over 1 horizon:
-        ────────────────────────────────────────────────────────────────────────────────
+        ──────────────────────────────────────────────────────────────────────────────
         Variable Specifications
-        ────────────────────────────────────────────────────────────────────────────────
-        Outcome variable:                    y    Minimum horizon:                     0
-        Regressor:                                Lagged control:                      w
-        ────────────────────────────────────────────────────────────────────────────────"""
+        ──────────────────────────────────────────────────────────────────────────────
+        Outcome variable:                   y    Minimum horizon:                    0
+        Regressor:                               Lagged control:                     w
+        ──────────────────────────────────────────────────────────────────────────────"""
     r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquareLP(), nothing, HRVCE(), VarName[Cum(:y)], VarName[Cum(:x)], VarName[:w], Dict{VarName,Int}(Cum(:y)=>1), Dict{VarName,Int}(Cum(:x)=>1), Dict{VarName,Int}(:w=>1), 1, 0, nothing, nothing, nothing, nothing, VarName[Cum(:x)], VarName[:z1,:z2], false, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 1 lag over 1 horizon:
-        ────────────────────────────────────────────────────────────────────────────────
+        ──────────────────────────────────────────────────────────────────────────────
         Variable Specifications
-        ────────────────────────────────────────────────────────────────────────────────
-        Outcome variable:               Cum(y)    Minimum horizon:                     0
-        Regressor:                      Cum(x)    Lagged control:                      w
-        Endogenous variable:            Cum(x)    Instruments:                     z1 z2
-        ────────────────────────────────────────────────────────────────────────────────"""
+        ──────────────────────────────────────────────────────────────────────────────
+        Outcome variable:              Cum(y)    Minimum horizon:                    0
+        Regressor:                     Cum(x)    Lagged control:                     w
+        Endogenous variable:           Cum(x)    Instruments:                    z1 z2
+        ──────────────────────────────────────────────────────────────────────────────"""
 end
 
 @testset "_makeYX" begin
@@ -217,26 +222,38 @@ end
     df = exampledata(:rz)
 
     # Baseline specifications
-    r1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy, nlag=4, nhorz=17, addylag=false, firststagebyhorz=true)
+    r1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
+        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true)
     f1 = irf(r1, Cum(:y), Cum(:g))
     @test coef(f1)[1] ≈ 1.306459420753 atol=1e-8
     @test coef(f1)[9] ≈ .6689611146745 atol=1e-9
     @test coef(f1)[17] ≈ .7096110638625 atol=1e-9
+    # Standard errors based on EWC rather than Newey-West in original paper
+    @test stderror(f1)[1] ≈ 0.4286854811143802 atol=1e-8
+    @test stderror(f1)[9] ≈ 0.10921291172237432 atol=1e-8
+    @test stderror(f1)[17] ≈ 0.20049776900175723 atol=1e-8
 
-    r2 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g), nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true)
+    r2 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g),
+        nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true)
     f2 = irf(r2, Cum(:y), Cum(:g))
     @test coef(f2)[1] ≈ .218045283661 atol=1e-9
     @test coef(f2)[8] ≈ .4509452247638 atol=1e-9
     @test coef(f2)[16] ≈ .5591002357465 atol=1e-9
+    # Standard errors based on EWC rather than Newey-West in original paper
+    @test stderror(f2)[1] ≈ 0.16423131478595118 atol=1e-8
+    @test stderror(f2)[8] ≈ 0.10754779358937377 atol=1e-8
+    @test stderror(f2)[16] ≈ 0.14263798115850218 atol=1e-8
 
     # Omit WWII
-    r1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy, nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, subset=df.wwii.==0)
+    r1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
+        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, subset=df.wwii.==0)
     f1 = irf(r1, Cum(:y), Cum(:g))
     @test coef(f1)[1] ≈ 1.7188411171 atol=1e-8
     @test coef(f1)[9] ≈ .7672214331391 atol=1e-9
     @test coef(f1)[17] ≈ .7167179685971 atol=1e-9
 
-    r2 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g), nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true, subset=df.wwii.==0)
+    r2 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g),
+        nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true, subset=df.wwii.==0)
     f2 = irf(r2, Cum(:y), Cum(:g))
     @test coef(f2)[1] ≈ -.0342369278527 atol=1e-10
     @test coef(f2)[8] ≈ .2570200212481 atol=1e-9

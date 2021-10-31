@@ -1,3 +1,8 @@
+"""
+    Ridge{TF<:AbstractFloat} <: RegressionModel
+
+Data from a ridge regression.
+"""
 struct Ridge{TF<:AbstractFloat} <: RegressionModel
     y::Vector{TF}
     C::Matrix{TF}
@@ -14,6 +19,10 @@ struct Ridge{TF<:AbstractFloat} <: RegressionModel
     dof_res::TF
     dof_adj::Int
 end
+
+modelmatrix(m::Ridge) = m.C
+coef(m::Ridge) = m.θ
+residuals(m::Ridge) = m.resid
 
 show(io::IO, ::Ridge) = print(io, "Ridge regression")
 
@@ -96,7 +105,7 @@ by directly repeating each penalized least-square problem.
 This algorithm is intended to generate the most accurate estimates
 for each smoothing parameter
 when the computational cost is not a concern.
-For a faster algorithm that is also accurate, see [`DemmlerReinsch`](@ref).
+For a faster alternative, see [`DemmlerReinsch`](@ref).
 """
 struct DirectSolve <: SmoothAlgorithm end
 
@@ -108,6 +117,8 @@ Supertype for all methods used for generating alternative models.
 abstract type ModelSelection end
 
 @fieldequal ModelSelection
+
+show(io::IO, s::ModelSelection) = print(io, typeof(s).name.name)
 
 """
     GridSearch{A<:SmoothAlgorithm, TF<:AbstractFloat} <: ModelSelection
@@ -138,12 +149,21 @@ grid(v::Vector; kwargs...) = GridSearch(v; kwargs...)
 grid(v; kwargs...) = GridSearch([v...]; kwargs...)
 grid(; kwargs...) = GridSearch(exp.(LinRange(-6, 12, 50)); kwargs...)
 
+function show(io::IO, ::MIME"text/plain", s::GridSearch{A, TF}) where {A, TF}
+    N = length(s.v)
+    print(io, typeof(s).name.name, '{', A, ", ", TF, '}')
+    println(io, " across ", N, " candidate value", N>1 ? "s:" : ":")
+    print(IOContext(io, :compact=>true), "  ", s.v)
+end
+
 """
     ModelSelectionResult
 
 Supertype for all results from model selection.
 """
 abstract type ModelSelectionResult end
+
+show(io::IO, sr::ModelSelectionResult) = print(io, typeof(sr).name.name)
 
 """
     GridSearchResult{TF<:AbstractFloat} <: ModelSelectionResult
@@ -152,7 +172,7 @@ Additional results from [`GridSearch`](@ref),
 including estimates calculated for each parameter on the grid.
 
 # Fields
-- `i::Int`: the index of the optimal parameter selected for the final estimates.
+- `iopt::Dict{SearchCriterion,Int}`: index of the optimal parameter based on each criterion.
 - `θs::Matrix{TF}`: point estimates obtained.
 - `loocv::Vector{TF}`: leave-one-out cross validation errors.
 - `rss::Vector{TF}`: residual sums of squares.
@@ -162,7 +182,7 @@ including estimates calculated for each parameter on the grid.
 - `dof_res::Vector{TF}`: residual degrees of freedom.
 """
 struct GridSearchResult{TF<:AbstractFloat} <: ModelSelectionResult
-    i::Int
+    iopt::Dict{SearchCriterion,Int}
     θs::Matrix{TF}
     loocv::Vector{TF}
     rss::Vector{TF}
@@ -170,6 +190,14 @@ struct GridSearchResult{TF<:AbstractFloat} <: ModelSelectionResult
     aic::Vector{TF}
     dof_fit::Vector{TF}
     dof_res::Vector{TF}
+end
+
+function show(io::IO, ::MIME"text/plain", sr::GridSearchResult)
+    N = length(sr.rss)
+    print(io, typeof(sr).name.name, " across ", N, " candidate value", N>1 ? "s:" : ":")
+    for c in (LOOCV(), GCV(), AIC())
+        print(io, "\n  ", rpad(c, 6), "=> ", sr.iopt[c])
+    end
 end
 
 """
@@ -389,15 +417,13 @@ function _select(est::SmoothLP{<:GridSearch{DemmlerReinsch}}, y, C, crossy, cros
     end
     gcv = rss./(1.0.-dof_fit./T).^2
     aic = log.(rss) .+ 2.0.*dof_fit./T
-    if est.criterion isa LOOCV
-        _, il = findmin(loocv)
-    elseif est.criterion isa GCV
-        _, il = findmin(gcv)
-    else
-        _, il = findmin(aic)
+    iopt = Dict{SearchCriterion,Int}()
+    for (c, v) in zip((LOOCV(), GCV(), AIC()), (loocv, gcv, aic))
+        _, il = findmin(v)
+        iopt[c] = il
     end
-    r = GridSearchResult(il, θs, loocv, rss, gcv, aic, dof_fit, dof_res)
-    return λs[il], r, Sdiag
+    r = GridSearchResult(iopt, θs, loocv, rss, gcv, aic, dof_fit, dof_res)
+    return λs[iopt[est.criterion]], r, Sdiag
 end
 
 function _Sdiag!(Sdiag::Vector, C::Matrix, invCCP::Matrix)
@@ -440,15 +466,13 @@ function _select(est::SmoothLP{<:GridSearch{DirectSolve}}, y, C, crossy, crossC,
     end
     gcv = rss./(1.0.-dof_fit./T).^2
     aic = log.(rss) .+ 2.0.*dof_fit./T
-    if est.criterion isa LOOCV
-        _, il = findmin(loocv)
-    elseif est.criterion isa GCV
-        _, il = findmin(gcv)
-    else
-        _, il = findmin(aic)
+    iopt = Dict{SearchCriterion,Int}()
+    for (c, v) in zip((LOOCV(), GCV(), AIC()), (loocv, gcv, aic))
+        _, il = findmin(v)
+        iopt[c] = il
     end
-    r = GridSearchResult(il, θs, loocv, rss, gcv, aic, dof_fit, dof_res)
-    return λs[il], r, Sdiag
+    r = GridSearchResult(iopt, θs, loocv, rss, gcv, aic, dof_fit, dof_res)
+    return λs[iopt[est.criterion]], r, Sdiag
 end
 
 function _est(est::SmoothLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce, subset,
@@ -492,7 +516,7 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce
     λ, sr, Sdiag = _select(est, y, C, crossy, crossC, Cy, P)
     CCP = cholesky!(crossC + λ*P)
     if est.search isa GridSearch{DirectSolve}
-        l = sr.i
+        l = sr.iopt[est.criterion]
         θ, loocv, rss, gcv, aic, dof_fit, dof_res = sr.θs[:,l], sr.loocv[l],
             sr.rss[l], sr.gcv[l], sr.aic[l], sr.dof_fit[l], sr.dof_res[l]
     else
@@ -548,6 +572,13 @@ function lp(r::LocalProjectionResult{<:SmoothLP}, vce::CovarianceEstimator)
         r.endonames, r.ivnames, r.firststagebyhorz, r.nocons)
 end
 
+"""
+    lp(r::LocalProjectionResult{<:SmoothLP}, λ::Real; vce=nothing)
+
+Reestimate the smooth local projection with the smoothing parameter `λ`.
+Optionally, an alternative variance-covariance estimator may be specified
+with the keyword `vce`.
+"""
 function lp(r::LocalProjectionResult{<:SmoothLP}, λ::Real;
         vce::Union{CovarianceEstimator, Nothing}=nothing)
     m = r.estres.m
@@ -596,7 +627,7 @@ _estimatortitle(::LocalProjectionResult{<:SmoothLP}) = "Smooth Local Projection"
 
 function _estimatorinfo(r::LocalProjectionResult{<:SmoothLP}, halfwidth::Int)
     info = ["Smoothing parameter" => TestStat(r.estres.λ),
-        "Smoothed regressor" => join(string.(r.est.names), " "),
+        "Smoothed regressor" => join(r.est.names, " "),
         "Polynomial order" => r.est.order,
         "Finite difference order" => r.est.ndiff,
         "Selection criterion" => r.est.criterion,

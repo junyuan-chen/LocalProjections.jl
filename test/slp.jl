@@ -1,7 +1,12 @@
 @testset "Ridge" begin
     a2 = rand(2,2)
-    m = Ridge(rand(5), rand(5,2), a2, rand(2), a2, 1.0, a2, nothing, 1.0,
-        rand(2), rand(5), a2, 1.0, 1)
+    C = rand(5,2)
+    θ = rand(2)
+    resid = rand(5)
+    m = Ridge(rand(5), C, a2, rand(2), a2, 1.0, a2, nothing, 1.0, θ, resid, a2, 1.0, 1)
+    @test modelmatrix(m) === C
+    @test coef(m) === θ
+    @test residuals(m) === resid
     @test sprint(show, m) == "Ridge regression"
 end
 
@@ -35,6 +40,27 @@ end
     @test grid().v == exp.(LinRange(-6, 12, 50))
     @test grid([2 1], algo=DirectSolve()) == GridSearch([2.0, 1.0], algo=DirectSolve())
     @test_throws ArgumentError grid([2.0, -1.0])
+
+    s = grid()
+    @test sprint(show, s) == "GridSearch"
+    @test sprint(show, MIME("text/plain"), s)[1:80] == """
+        GridSearch{DemmlerReinsch, Float64} across 50 candidate values:
+          [0.00247875, 0"""
+end
+
+@testset "GridSearchResult" begin
+    iopt = Dict{SearchCriterion,Int}()
+    iopt[LOOCV()] = 5
+    iopt[GCV()] = 1
+    iopt[AIC()] = 3
+    v = rand(2)
+    sr = GridSearchResult(iopt, rand(2,2), v, v, v, v, v, v)
+    @test sprint(show, sr) == "GridSearchResult"
+    @test sprint(show, MIME("text/plain"), sr) == """
+        GridSearchResult across 2 candidate values:
+          LOOCV => 5
+          GCV   => 1
+          AIC   => 3"""
 end
 
 @testset "SmoothLP" begin
@@ -118,28 +144,28 @@ end
     @test f1.B ≈ f0.B atol=1e-4
     # Check HR confidence interval
     ci1 = confint(f1)
-    @test ci1[1][1] ≈ -0.04758915684832821
-    @test ci1[2][1] ≈ 0.8758551271581806
-    @test ci1[1][10] ≈ -0.35800938178031794
-    @test ci1[2][10] ≈ 2.265871824705655
+    @test ci1[1][1] ≈ -0.04758915684832821 atol=1e-8
+    @test ci1[2][1] ≈ 0.8758551271581806 atol=1e-8
+    @test ci1[1][10] ≈ -0.35800938178031794 atol=1e-8
+    @test ci1[2][10] ≈ 2.265871824705655 atol=1e-8
 
     @test sprint(show, MIME("text/plain"), r1) == """
         LocalProjectionResult with 12 lags over 48 horizons:
-        ────────────────────────────────────────────────────────────────────────────────
+        ──────────────────────────────────────────────────────────────────────────────
         Variable Specifications
-        ────────────────────────────────────────────────────────────────────────────────
-        Outcome variable:                  ebp    Minimum horizon:                     0
-        Regressors:            ff4_tc constant    
-        Lagged controls:                                      logcpi logip ff ebp ff4_tc
-        ────────────────────────────────────────────────────────────────────────────────
+        ──────────────────────────────────────────────────────────────────────────────
+        Outcome variable:                 ebp    Minimum horizon:                    0
+        Regressors:           ff4_tc constant    
+        Lagged controls:                                    logcpi logip ff ebp ff4_tc
+        ──────────────────────────────────────────────────────────────────────────────
         Smooth Local Projection
-        ────────────────────────────────────────────────────────────────────────────────
-        Smoothing parameter:              0.00    Smoothed regressor:             ff4_tc
-        Polynomial order:                    3    Finite difference order:             3
-        Selection criterion:               GCV    Selection algorithm:    DemmlerReinsch
-        Leave-one-out CV:              2212.02    Generalized CV:                2212.25
-        Akaike information:               7.70    Residual sum of squares:       2193.42
-        ────────────────────────────────────────────────────────────────────────────────"""
+        ──────────────────────────────────────────────────────────────────────────────
+        Smoothing parameter:             0.00    Smoothed regressor:            ff4_tc
+        Polynomial order:                   3    Finite difference order:            3
+        Selection criterion:              GCV    Selection algorithm:   DemmlerReinsch
+        Leave-one-out CV:             2212.02    Generalized CV:               2212.25
+        Akaike information:              7.70    Residual sum of squares:      2193.42
+        ──────────────────────────────────────────────────────────────────────────────"""
 
     # Compare estimates with Matlab results from Barnichon and Brownlees (2019)
     df = exampledata(:bb)
@@ -163,28 +189,29 @@ end
 
     # Check EWC confidence interval
     ci1 = confint(f1)
-    @test ci1[1][1] ≈ -0.8571544691033884
-    @test ci1[2][1] ≈ 0.3850826992477342
-    @test ci1[1][10] ≈ 0.020165100998330715
-    @test ci1[2][10] ≈ 0.34552900750920656
+    @test ci1[1][1] ≈ -0.8571544691033884 atol=1e-8
+    @test ci1[2][1] ≈ 0.3850826992477342 atol=1e-8
+    @test ci1[1][10] ≈ 0.020165100998330715 atol=1e-8
+    @test ci1[2][10] ≈ 0.34552900750920656 atol=1e-8
 
     # Compare results based on DemmlerReinsch and DirectSolve
     gbb = 194.0.*(1:0.5:10)
+    iopt = Dict{SearchCriterion,Int}(c=>1 for c in (LOOCV(), GCV(), AIC()))
     est1 = SmoothLP(:ir, 3, 2, search=grid(gbb), criterion=LOOCV())
     r1 = lp(est1, df, :yg, xnames=ns, wnames=ns, nlag=4, nhorz=20, minhorz=1)
     @test r1.estres.λ == 194
-    @test r1.estres.search.i == 1
+    @test r1.estres.search.iopt == iopt
     @test r1.estres.rss ≈ sum(r1.estres.m.resid.^2)
     est2 = SmoothLP(:ir, 3, 2, search=grid(gbb, algo=DirectSolve()), criterion=GCV())
     r2 = lp(est2, df, :yg, xnames=ns, wnames=ns, nlag=4, nhorz=20, minhorz=1)
     @test r2.estres.λ == 194
-    @test r2.estres.search.i == 1
+    @test r2.estres.search.iopt == iopt
     @test r2.estres.rss ≈ sum(r2.estres.m.resid.^2)
     @test r1.estres.search.θs ≈ r2.estres.search.θs atol=1e-2
     @test r1.estres.search.loocv ≈ r2.estres.search.loocv atol=1e-1
     @test r1.estres.search.rss ≈ r2.estres.search.rss atol=1e-1
     @test r1.estres.search.gcv ≈ r2.estres.search.gcv atol=1e-1
-    @test r1.estres.search.aic ≈ r2.estres.search.aic atol=1e-6
+    @test r1.estres.search.aic ≈ r2.estres.search.aic atol=1e-5
     @test r1.estres.search.dof_fit ≈ r2.estres.search.dof_fit atol=1e-2
     # Check the recalculated final estimates are the same
     @test r1.estres.θ ≈ r2.estres.θ
@@ -212,10 +239,10 @@ end
     @test r4.V ≈ r0.V
     f4 = irf(r4, :yg, :ir)
     ci4 = confint(f4)
-    @test ci4[1][1] ≈ -0.6790290214946426
-    @test ci4[2][1] ≈ 0.20695725163898837
-    @test ci4[1][10] ≈ -0.06529955673073387
-    @test ci4[2][10] ≈ 0.4309936652382712
+    @test ci4[1][1] ≈ -0.6790290214946426 atol=1e-8
+    @test ci4[2][1] ≈ 0.20695725163898837 atol=1e-8
+    @test ci4[1][10] ≈ -0.06529955673073387 atol=1e-8
+    @test ci4[2][10] ≈ 0.4309936652382712 atol=1e-8
 
     r5 = lp(r1, 194.0, vce=HRVCE())
     @test r5.B ≈ r1.B
@@ -228,18 +255,61 @@ end
 
     @test sprint(show, MIME("text/plain"), r1) == """
         LocalProjectionResult with 4 lags over 20 horizons:
-        ────────────────────────────────────────────────────────────────────────────────
+        ──────────────────────────────────────────────────────────────────────────────
         Variable Specifications
-        ────────────────────────────────────────────────────────────────────────────────
-        Outcome variable:                   yg    Minimum horizon:                     1
-        Regressors:          ir pi yg constant    Lagged controls:              ir pi yg
-        ────────────────────────────────────────────────────────────────────────────────
+        ──────────────────────────────────────────────────────────────────────────────
+        Outcome variable:                  yg    Minimum horizon:                    1
+        Regressors:         ir pi yg constant    Lagged controls:             ir pi yg
+        ──────────────────────────────────────────────────────────────────────────────
         Smooth Local Projection
-        ────────────────────────────────────────────────────────────────────────────────
-        Smoothing parameter:            194.00    Smoothed regressor:                 ir
-        Polynomial order:                    3    Finite difference order:             2
-        Selection criterion:             LOOCV    Selection algorithm:    DemmlerReinsch
-        Leave-one-out CV:             34530.21    Generalized CV:               34511.09
-        Akaike information:              10.45    Residual sum of squares:      34379.97
-        ────────────────────────────────────────────────────────────────────────────────"""
+        ──────────────────────────────────────────────────────────────────────────────
+        Smoothing parameter:           194.00    Smoothed regressor:                ir
+        Polynomial order:                   3    Finite difference order:            2
+        Selection criterion:            LOOCV    Selection algorithm:   DemmlerReinsch
+        Leave-one-out CV:            34530.21    Generalized CV:              34511.09
+        Akaike information:             10.45    Residual sum of squares:     34379.97
+        ──────────────────────────────────────────────────────────────────────────────"""
+
+    df = exampledata(:rz)
+    est = SmoothLP(Cum(:g), 3, 3, search=grid([1, 1e3, 1e5]))
+    r1 = lp(est, df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
+        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, subset=df.wwii.==0)
+    @test all(i->i==3, values(r1.estres.search.iopt))
+    f1 = irf(r1, Cum(:y), Cum(:g))
+    @test coef(f1)[1] ≈ 0.6969380791400279 atol=1e-8
+    @test coef(f1)[9] ≈ 0.8444504165548141 atol=1e-8
+    @test coef(f1)[17] ≈ 0.7343077490303411 atol=1e-8
+    @test stderror(f1)[1] ≈ 0.46635397544693047 atol=1e-8
+    @test stderror(f1)[9] ≈ 0.08475156240143418 atol=1e-8
+    @test stderror(f1)[17] ≈ 0.12534835370652056 atol=1e-8
+
+    r2 = lp(est, df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g),
+        iv=Cum(:g)=>(:newsy, :g), nlag=4, nhorz=16, minhorz=1, addylag=false,
+        firststagebyhorz=true, subset=df.wwii.==0)
+    @test all(i->i==3, values(r2.estres.search.iopt))
+    f2 = irf(r2, Cum(:y), Cum(:g))
+    @test coef(f2)[1] ≈ -0.178375389687782 atol=1e-8
+    @test coef(f2)[8] ≈ 0.2573602225267132 atol=1e-8
+    @test coef(f2)[16] ≈ 0.23087128211782626 atol=1e-8
+    @test stderror(f2)[1] ≈ 0.09017317177271794 atol=1e-8
+    @test stderror(f2)[8] ≈ 0.03145777721639394 atol=1e-8
+    @test stderror(f2)[16] ≈ 0.06985430057347854 atol=1e-8
+
+    @test sprint(show, MIME("text/plain"), r2) == """
+        LocalProjectionResult with 4 lags over 16 horizons:
+        ──────────────────────────────────────────────────────────────────────────────
+        Variable Specifications
+        ──────────────────────────────────────────────────────────────────────────────
+        Outcome variable:              Cum(y)    Minimum horizon:                    1
+        Regressors:           Cum(g) constant    Lagged controls:            newsy y g
+        Endogenous variable:           Cum(g)    Instruments:                  newsy g
+        ──────────────────────────────────────────────────────────────────────────────
+        Smooth Local Projection
+        ──────────────────────────────────────────────────────────────────────────────
+        Smoothing parameter:        100000.00    Smoothed regressor:            Cum(g)
+        Polynomial order:                   3    Finite difference order:            3
+        Selection criterion:            LOOCV    Selection algorithm:   DemmlerReinsch
+        Leave-one-out CV:             1595.11    Generalized CV:               1594.28
+        Akaike information:              7.37    Residual sum of squares:      1592.98
+        ──────────────────────────────────────────────────────────────────────────────"""
 end
