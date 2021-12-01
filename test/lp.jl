@@ -70,7 +70,7 @@ end
     ys = [randn(T), randn(T)]
     xs = [randn(T), randn(T)]
     ws = ys
-    Y, X, T1, eT = _makeYX(ys, xs, ws, 3, 5, nothing)
+    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 3, 5, nothing)
     @test T1 == T-8
     @test size(Y) == (T1, 2)
     @test size(X) == (T1, 8)
@@ -82,10 +82,21 @@ end
     @test X[:,8] == ws[2][1:end-8]
     @test all(eT)
 
+    sts = (rand(T), rand(T))
+    Y, X, T1, eT = _makeYX(ys, xs, ws, sts, 1, 0, nothing)
+    @test size(X) == (99, 6)
+    @test X[:,1] == xs[1][2:end,1]
+    @test X[:,2] == xs[2][2:end,1]
+    @test X[:,3] == ys[1][1:99,1].*sts[1][2:end]
+    @test X[:,4] == ys[1][1:99,1].*sts[2][2:end]
+    @test X[:,5] == ys[2][1:99,1].*sts[1][2:end]
+    @test X[:,6] == ys[2][1:99,1].*sts[2][2:end]
+    @test all(eT)
+
     ys = (randn(T),)
     xs = ()
     ws = ys
-    Y, X, T1, eT = _makeYX(ys, xs, ws, 1, 0, nothing)
+    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
     @test T1 == 99
     @test size(Y) == (T1, 1)
     @test size(X) == (T1, 1)
@@ -96,7 +107,7 @@ end
     ys[1][2], ys[1][3] = NaN, Inf
     xs = (convert(Vector{Union{Float64, Missing}}, randn(T)),)
     xs[1][3] = missing
-    Y, X, T1, eT = _makeYX(ys, xs, ws, 1, 0, nothing)
+    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
     @test T1 == 96
     @test size(Y) == (T1, 1)
     @test size(X) == (T1, 2)
@@ -105,7 +116,7 @@ end
     @test X[:,2] == ws[1][4:end-1]
     @test eT == ((1:99).>3)
 
-    Y, X, T1, eT = _makeYX(ys, xs, ws, 1, 1, (1:100).<=90)
+    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 1, 1, (1:100).<=90)
     @test T1 == 85
     @test size(Y) == (T1, 1)
     @test size(X) == (T1, 2)
@@ -115,7 +126,7 @@ end
     # eT covers 2:99 in full data
     @test eT == ((1:98).>3) .& ((1:98).<=88)
 
-    Y, X, T1, eT = _makeYX(ys, xs, ws, 1, 1, ((1:100).<60).|((1:100).>=70))
+    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 1, 1, ((1:100).<60).|((1:100).>=70))
     @test T1 == 83
     @test Y[:] == vcat(ys[1][6:59], ys[1][72:end])
     @test X[:,1] == vcat(xs[1][5:58], xs[1][71:end-1])
@@ -123,15 +134,15 @@ end
     @test eT == ((1:98).>3) .& (((1:98).<58) .| ((1:98).>=70))
 
     ys = ()
-    @test_throws ArgumentError _makeYX(ys, xs, ws, 1, 0, nothing)
+    @test_throws ArgumentError _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
     ws = ()
-    @test_throws ArgumentError _makeYX(ys, xs, ws, 1, 0, nothing)
-    @test_throws ArgumentError _makeYX(ys, xs, ws, 0, 0, nothing)
+    @test_throws ArgumentError _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
+    @test_throws ArgumentError _makeYX(ys, xs, ws, nothing, 0, 0, nothing)
 
     ys = ([Inf, NaN, 1.0],)
     xs = ()
     ws = ys
-    @test_throws ArgumentError _makeYX(ys, xs, ws, 1, 0, nothing)
+    @test_throws ArgumentError _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
 end
 
 @testset "lp" begin
@@ -139,7 +150,7 @@ end
     ys = [randn(T), randn(T)]
     xs = [randn(T), randn(T)]
     ws = ys
-    b, v, t, m = _lp(ys, xs, ws, 3, 5, SimpleVCE(), nothing)
+    b, v, t, m = _lp(ys, xs, ws, nothing, 3, 5, SimpleVCE(), nothing)
     @test size(b) == (8, 2)
     @test size(v) == (16, 16)
     @test t == 92
@@ -259,5 +270,51 @@ end
     @test coef(f2)[8] ≈ .2570200212481 atol=1e-9
     @test coef(f2)[16] ≈ .2225592580744 atol=1e-9
 
-    @test_logs (:warn, "firststagebyhorz=false while endogenous variables contain Cum") lp(df, Cum(:y), xnames=Cum(:g), iv=Cum(:g)=>:newsy)
+    # State dependency
+    # Compare estimates generated from `jordagk_twoinstruments.do`
+    # Use `bro multexpbh* multrecbh*` to see the Stata results
+
+    # Construct the lag of slack
+    df.rec = similar(df.slack)
+    df.rec[1] = missing
+    # Fill the beginning missing values
+    df.rec[2:5] .= true
+    df.rec[6:end] .= view(df.slack, 5:length(df.rec)-1)
+    df.exp = 1.0 .- df.rec
+    df.recnewsy = df.rec.*df.newsy
+    df.expnewsy = df.exp.*df.newsy
+    df.recg = df.rec.*df.g
+    df.expg = df.exp.*df.g
+
+    # nomit
+    r2 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
+        iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
+        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true)
+    f2rec = irf(r2, Cum(:y), Cum(:g,:rec))
+    @test coef(f2rec)[1] ≈ .2718093668839 atol=1e-9
+    @test coef(f2rec)[8] ≈ .6357587189621 atol=1e-9
+    @test coef(f2rec)[16] ≈ .6784987089259 atol=1e-9
+    f2exp = irf(r2, Cum(:y), Cum(:g,:exp))
+    @test coef(f2exp)[1] ≈ .2660710337235 atol=1e-9
+    @test coef(f2exp)[8] ≈ .3511868388287 atol=1e-9
+    @test coef(f2exp)[16] ≈ .373442191223 atol=1e-9
+
+    # wwii
+    r2 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
+        iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
+        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true,
+        subset=df.wwii.==0)
+    f2rec = irf(r2, Cum(:y), Cum(:g,:rec))
+    @test coef(f2rec)[1] ≈ .345617820757 atol=1e-9
+    @test coef(f2rec)[8] ≈ 1.350903038984 atol=1e-8
+    @test coef(f2rec)[16] ≈ 1.365148452565 atol=1e-8
+    f2exp = irf(r2, Cum(:y), Cum(:g,:exp))
+    @test coef(f2exp)[1] ≈ .010365014606 atol=1e-10
+    @test coef(f2exp)[8] ≈ .2171636455168 atol=1e-9
+    @test coef(f2exp)[16] ≈ .2140385336746 atol=1e-9
+
+    @test_logs (:warn, "firststagebyhorz=false while endogenous variables contain Cum")
+        lp(df, Cum(:y), xnames=Cum(:g), wnames=(:y,), iv=Cum(:g)=>:newsy, addylag=false)
+    @test_logs (:warn, "addylag=true while outcome variables contain Cum")
+        lp(df, Cum(:y), xnames=Cum(:g))
 end

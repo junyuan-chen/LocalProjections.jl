@@ -317,8 +317,8 @@ function _getcols!(est::SmoothLP, data, xnames)
     return ix_sm
 end
 
-function _makeYSr(ys, ss, xs, ws, nlag, horz, subset; TF=Float64)
-    Y, X, T, esample = _makeYX(ys, xs, ws, nlag, horz, subset; TF=TF)
+function _makeYSr(ys, ss, xs, ws, sts, nlag, horz, subset; TF=Float64)
+    Y, X, T, esample = _makeYX(ys, xs, ws, sts, nlag, horz, subset; TF=TF)
     Tfull = size(ys[1],1)
     ns = length(ss)
     # Filter valid rows within those filtered by _makeYX
@@ -475,7 +475,7 @@ function _select(est::SmoothLP{<:GridSearch{DirectSolve}}, y, C, crossy, crossC,
     return λs[iopt[est.criterion]], r, Sdiag
 end
 
-function _est(est::SmoothLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce, subset,
+function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, nlag, minhorz, nhorz, vce, subset,
         iv, ix_iv, yfs, xfs, firststagebyhorz; TF=Float64)
     length(ys) > 1 && throw(ArgumentError("accept only one outcome variable"))
     ix_sm = _getcols!(est, data, xnames)
@@ -486,13 +486,13 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce
     T = Vector{Int}(undef, nhorz)
     for h in minhorz:minhorz+nhorz-1
         if iv !== nothing && firststagebyhorz
-            xs[ix_iv] .= _firststage(yfs, xfs, ws, nlag, h, subset; TF=TF)
+            xs[ix_iv] .= _firststage(yfs, xfs, ws, sts, nlag, h, subset; TF=TF)
         end
         # xs could be changed by first-stage regression
         ss = view(xs, ix_sm)
         xs_s = view(xs, ix_nsm)
         i = h - minhorz + 1
-        YSr[i], Xs[i], T[i], _, _ = _makeYSr(ys, ss, xs_s, ws, nlag, h, subset; TF=TF)
+        YSr[i], Xs[i], T[i], _, _ = _makeYSr(ys, ss, xs_s, ws, sts, nlag, h, subset; TF=TF)
     end
     Tall = sum(T)
     nys = size(YSr[1], 2)

@@ -183,21 +183,21 @@ _checknames(names) = all(n isa VarIndex for n in names)
 
 _toint(data, name::Symbol) = Tables.columnindex(data, name)
 _toint(data, i::Integer) = Int(i)
-_toint(data, c::Cum) = Cum(_toint(data, _geto(c)))
 
 _toname(data, name::Symbol) = name
 _toname(data, i::Integer) = Tables.columnnames(data)[i]
-_toname(data, c::Cum) = Cum(_toname(data, _geto(c)))
 
-function _getcols(data, ynames, xnames, wnames, addylag, nocons; TF=Float64)
+function _getcols(data, ynames, xnames, wnames, states, addylag, nocons; TF=Float64)
     # The names must be iterable
     ynames isa VarIndex && (ynames = (ynames,))
     xnames isa VarIndex && (xnames = (xnames,))
     wnames isa VarIndex && (wnames = (wnames,))
+    states isa VarIndex && (states = (states,))
     argmsg = ", must contain either integers, `Symbol`s or `TransformedVar`s"
     _checknames(ynames) || throw(ArgumentError("invalid ynames"*argmsg))
     length(xnames)==0 || _checknames(xnames) || throw(ArgumentError("invalid xnames"*argmsg))
     length(wnames)==0 || _checknames(wnames) || throw(ArgumentError("invalid wnames"*argmsg))
+    states===nothing || _checknames(states) || throw(ArgumentError("invalid states"*argmsg))
 
     # Convert all column indices to Int
     ynames = VarIndex[_toint(data, n) for n in ynames]
@@ -208,14 +208,15 @@ function _getcols(data, ynames, xnames, wnames, addylag, nocons; TF=Float64)
     ys = Any[getcolumn(data, n) for n in ynames]
     xs = Any[getcolumn(data, n) for n in xnames]
     ws = Any[getcolumn(data, n) for n in wnames]
+    sts = states === nothing ? nothing : Any[getcolumn(data, n) for n in states]
     if !nocons
         push!(xs, ones(TF, length(ys[1])))
         xnames = (xnames..., :constant)
     end
-    return ynames, xnames, wnames, ys, xs, ws
+    return ynames, xnames, wnames, states, ys, xs, ws, sts
 end
 
-function _makeYX(ys, xs, ws, nlag::Int, horz::Int, subset::Union{BitVector,Nothing};
+function _makeYX(ys, xs, ws, sts, nlag::Int, horz::Int, subset::Union{BitVector,Nothing};
         firststage::Bool=false, TF=Float64)
     ny = length(ys)
     ny > 0 || throw(ArgumentError("ys cannot be empty"))
@@ -226,8 +227,9 @@ function _makeYX(ys, xs, ws, nlag::Int, horz::Int, subset::Union{BitVector,Nothi
     nx = length(xs)
     nw = length(ws)
     nw > 0 || throw(ArgumentError("ws cannot be empty"))
-    T > nx+nw*nlag || throw(ArgumentError(
-        "not enough observations for nlag=$nlag and horz=$(horz)"))
+    nX = sts === nothing ? nx+nw*nlag : nx+nw*nlag*length(sts)
+    T > nX || throw(ArgumentError(
+        "not enough observations for nlag=$nlag and horz=$horz"))
     # Indicators for valid observations within the T rows
     esampleT = trues(T)
     # A cache for indicators
@@ -245,7 +247,7 @@ function _makeYX(ys, xs, ws, nlag::Int, horz::Int, subset::Union{BitVector,Nothi
         _esample!(esampleT, aux, v)
         copyto!(view(Y,esampleT,j), view(v,esampleT))
     end
-    X = Matrix{TF}(undef, T, nx+nw*nlag)
+    X = Matrix{TF}(undef, T, nX)
     if nx > 0
         for j in 1:nx
             v = view(vec(xs[j], subset, :x, horz, TF), nlag+1:Tfull-horz)
@@ -254,13 +256,36 @@ function _makeYX(ys, xs, ws, nlag::Int, horz::Int, subset::Union{BitVector,Nothi
             copyto!(view(X,esampleT,j), view(v,esampleT))
         end
     end
-    for j in 1:nw
-        for l in 1:nlag
-            v = view(vec(ws[j], subset, :x, horz, TF), nlag+1-l:Tfull-horz-l)
-            subset === nothing || j > 1 || (esampleT .&= view(subset, nlag+1-l:Tfull-horz-l))
+    if sts === nothing
+        for j in 1:nw
+            for l in 1:nlag
+                v = view(vec(ws[j], subset, :x, horz, TF), nlag+1-l:Tfull-horz-l)
+                subset === nothing || j > 1 ||
+                    (esampleT .&= view(subset, nlag+1-l:Tfull-horz-l))
+                _esample!(esampleT, aux, v)
+                # Variables with the same lag are put together
+                copyto!(view(X,esampleT,nx+(l-1)*nw+j), view(v,esampleT))
+            end
+        end
+    else
+        ns = length(sts)
+        ssts = Vector{AbstractVector}(undef, ns)
+        for j in 1:ns
+            v = view(vec(sts[j], subset, :x, horz, TF), nlag+1:Tfull-horz)
             _esample!(esampleT, aux, v)
-            # Variables with the same lag are put together
-            copyto!(view(X,esampleT,nx+(l-1)*nw+j), view(v,esampleT))
+            ssts[j] = v
+        end
+        for j in 1:nw
+            for l in 1:nlag
+                for s in 1:ns
+                    v = view(vec(ws[j], subset, :x, horz, TF), nlag+1-l:Tfull-horz-l)
+                    subset === nothing || j > 1 ||
+                        (esampleT .&= view(subset, nlag+1-l:Tfull-horz-l))
+                    s > 1 || _esample!(esampleT, aux, v)
+                    X[esampleT, nx+(l-1)*nw*ns+(j-1)*ns+s] .=
+                        view(ssts[s],esampleT) .* view(v,esampleT)
+                end
+            end
         end
     end
     T1 = sum(esampleT)
@@ -274,14 +299,14 @@ function _makeYX(ys, xs, ws, nlag::Int, horz::Int, subset::Union{BitVector,Nothi
     return Y, X, T, esampleT
 end
 
-function _lp(ys, xs, ws, nlag::Int, horz::Int, vce::Union{CovarianceEstimator,Nothing},
+function _lp(ys, xs, ws, sts, nlag::Int, horz::Int, vce::Union{CovarianceEstimator,Nothing},
         subset::Union{BitVector,Nothing}; TF=Float64)
-    Y, X, T, esampleT = _makeYX(ys, xs, ws, nlag, horz, subset; TF=TF)
+    Y, X, T, esampleT = _makeYX(ys, xs, ws, sts, nlag, horz, subset; TF=TF)
     m = OLS(Y, X)
     return coef(m), vcov(m, vce), T, m
 end
 
-function _normalize!(data, normalize, xnames, xs, ws, nlag, minhorz, subset; TF=Float64)
+function _normalize!(data, normalize, xnames, xs, ws, sts, nlag, minhorz, subset; TF=Float64)
     snames = normalize isa Pair ? (normalize[1],) : (p[1] for p in normalize)
     ix_s = Vector{Int}(undef, length(snames))
     for (i, n) in enumerate(snames)
@@ -292,7 +317,7 @@ function _normalize!(data, normalize, xnames, xs, ws, nlag, minhorz, subset; TF=
     end
     nnames = normalize isa Pair ? (normalize[2],) : (p[2] for p in normalize)
     yn = Any[getcolumn(data, n) for n in nnames]
-    Bn, Vn, Tn, _ = _lp(yn, xs, ws, nlag, minhorz, nothing, subset; TF=TF)
+    Bn, Vn, Tn, _ = _lp(yn, xs, ws, sts, nlag, minhorz, nothing, subset; TF=TF)
     normmults = TF[Bn[ix,i] for (i,ix) in enumerate(ix_s)]
     xs[ix_s] .*= normmults
     normnames = VarName[_toname(data, n) for n in snames]
@@ -300,19 +325,19 @@ function _normalize!(data, normalize, xnames, xs, ws, nlag, minhorz, subset; TF=
     return normnames, normtars, normmults
 end
 
-_normalize!(data, normalize::Nothing, xnames, xs, ws, nlag, minhorz, subset; TF=Float64) =
+_normalize!(data, normalize::Nothing, xnames, xs, ws, sts, nlag, minhorz, subset; TF=Float64) =
     (nothing, nothing, nothing)
 
-function _firststage(ys, xs, ws, nlag::Int, horz::Int, subset::Union{BitVector,Nothing};
+function _firststage(ys, xs, ws, sts, nlag::Int, horz::Int, subset::Union{BitVector,Nothing};
         TF=Float64)
-    Y, X, T, esampleT = _makeYX(ys, xs, ws, nlag, horz, subset; firststage=true, TF=TF)
+    Y, X, T, esampleT = _makeYX(ys, xs, ws, sts, nlag, horz, subset; firststage=true, TF=TF)
     # Get first-stage estimates
     bf = X'Y
     ldiv!(cholesky!(X'X), bf)
     # Make the fitted values, need to have the same length as original data
     Tfull = size(ys[1],1)
     nY = length(ys)
-    fitted = fill(fill(convert(TF, NaN), Tfull), nY)
+    fitted = ((fill(convert(TF, NaN), Tfull) for _ in 1:nY)...,)
     Xb = X * bf
     for i in 1:nY
         copyto!(view(view(fitted[i], nlag+1:Tfull-horz), esampleT), view(Xb,:,i))
@@ -320,7 +345,8 @@ function _firststage(ys, xs, ws, nlag::Int, horz::Int, subset::Union{BitVector,N
     return fitted
 end
 
-function _iv!(data, iv, firststagebyhorz, xnames, xs, ws, nlag, minhorz, subset; TF=Float64)
+function _iv!(data, iv, firststagebyhorz, xnames, xs, ws, sts, nlag, minhorz, subset;
+        TF=Float64)
     endonames = iv[1]
     endonames isa VarIndex && (endonames = (endonames,))
     ix_iv = Vector{Int}(undef, length(endonames))
@@ -343,30 +369,32 @@ function _iv!(data, iv, firststagebyhorz, xnames, xs, ws, nlag, minhorz, subset;
         any(x->x isa Cum, endonames) &&
             @warn "firststagebyhorz=false while endogenous variables contain Cum"
         # Replace the endogenous variable with the fitted values
-        xs[ix_iv] .= _firststage(yfs, xfs, ws, nlag, minhorz, subset; TF=TF)
+        xs[ix_iv] .= _firststage(yfs, xfs, ws, sts, nlag, minhorz, subset; TF=TF)
     end
     endonames = VarName[_toname(data, n) for n in endonames]
     ivnames = VarName[_toname(data, n) for n in ivnames]
     return endonames, ivnames, ix_iv, yfs, xfs
 end
 
-_iv!(data, iv::Nothing, firststagebyhorz, xnames, xs, ws, nlag, minhorz, subset; TF=Float64) =
-    (nothing, nothing, nothing, nothing, nothing)
+_iv!(data, iv::Nothing, firststagebyhorz, xnames, xs, ws, sts, nlag, minhorz, subset;
+    TF=Float64) = (nothing, nothing, nothing, nothing, nothing)
 
-function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce, subset,
+function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, sts,
+        nlag, minhorz, nhorz, vce, subset,
         iv, ix_iv, yfs, xfs, firststagebyhorz; TF=Float64)
     ny = length(ys)
-    nr = length(xs) + length(ws)*nlag
+    nstate =sts === nothing ? 1 : length(sts)
+    nr = length(xs) + length(ws)*nlag*nstate
     B = Array{TF,3}(undef, nr, ny, nhorz)
     V = Array{TF,3}(undef, nr*ny, nr*ny, nhorz)
     T = Vector{Int}(undef, nhorz)
     M = Vector{OLS{TF}}(undef, nhorz)
     for h in minhorz:minhorz+nhorz-1
         if iv !== nothing && firststagebyhorz
-            xs[ix_iv] .= _firststage(yfs, xfs, ws, nlag, h, subset; TF=TF)
+            xs[ix_iv] .= _firststage(yfs, xfs, ws, sts, nlag, h, subset; TF=TF)
         end
         i = h - minhorz + 1
-        Bh, Vh, T[i], M[i] = _lp(ys, xs, ws, nlag, h, vce, subset; TF=TF)
+        Bh, Vh, T[i], M[i] = _lp(ys, xs, ws, sts, nlag, h, vce, subset; TF=TF)
         B[:,:,i] = reshape(Bh, nr, ny, 1)
         V[:,:,i] = reshape(Vh, nr*ny, nr*ny, 1)
     end
@@ -390,6 +418,7 @@ The input `data` must be `Tables.jl`-compatible.
 - `normalize::Union{VarIndexPair,Vector{VarIndexPair},Nothing}=nothing`: normalize the magnitude of the specified regressor(s) based on their initial impact on the respective targeted outcome variable.
 - `iv::Union{Pair,Nothing}=nothing`: endogenous varable(s) paired with instrument(s).
 - `firststagebyhorz::Bool=false`: estimate the first-stage regression separately for each horizon.
+- `states=nothing`: variable(s) representing the states for a state-dependent specification.
 - `vce::CovarianceEstimator=HARVCE(EWC())`: the variance-covariance estimator.
 - `subset::Union{BitVector,Nothing}=nothing`: subset of `data` to be used for estimation.
 - `addylag::Bool=true`: include lags of the outcome variable(s).
@@ -399,24 +428,28 @@ The input `data` must be `Tables.jl`-compatible.
 function lp(estimator, data, ynames;
         xnames=(), wnames=(), nlag::Int=4, nhorz::Int=1, minhorz::Int=0,
         normalize::Union{VarIndexPair,Vector{VarIndexPair},Nothing}=nothing,
-        iv::Union{Pair,Nothing}=nothing, firststagebyhorz::Bool=false,
+        iv::Union{Pair,Nothing}=nothing, firststagebyhorz::Bool=false, states=nothing,
         vce::CovarianceEstimator=HARVCE(EWC()),
         subset::Union{BitVector,Nothing}=nothing,
         addylag::Bool=true, nocons::Bool=false, TF::Type=Float64)
 
     checktable(data)
-    ynames, xnames, wnames, ys, xs, ws =
-        _getcols(data, ynames, xnames, wnames, addylag, nocons)
+    ynames, xnames, wnames, states, ys, xs, ws, sts =
+        _getcols(data, ynames, xnames, wnames, states, addylag, nocons)
+
+    if any(x->x isa Cum, ynames)
+        addylag && @warn "addylag=true while outcome variables contain Cum"
+    end
 
     normalize !== nothing && iv !== nothing &&
         throw(ArgumentError("options normalize and iv cannot be specified at the same time"))
     normnames, normtars, normmults =
-        _normalize!(data, normalize, xnames, xs, ws, nlag, minhorz, subset, TF=TF)
+        _normalize!(data, normalize, xnames, xs, ws, sts, nlag, minhorz, subset, TF=TF)
     endonames, ivnames, ix_iv, yfs, xfs =
-        _iv!(data, iv, firststagebyhorz, xnames, xs, ws, nlag, minhorz, subset, TF=TF)
+        _iv!(data, iv, firststagebyhorz, xnames, xs, ws, sts, nlag, minhorz, subset, TF=TF)
 
-    B, V, T, er = _est(estimator, data, xnames, ys, xs, ws, nlag, minhorz, nhorz, vce, subset,
-        iv, ix_iv, yfs, xfs, firststagebyhorz, TF=TF)
+    B, V, T, er = _est(estimator, data, xnames, ys, xs, ws, sts,
+        nlag, minhorz, nhorz, vce, subset, iv, ix_iv, yfs, xfs, firststagebyhorz, TF=TF)
 
     ynames = VarName[_toname(data, i) for i in ynames]
     xnames = VarName[_toname(data, i) for i in xnames]
