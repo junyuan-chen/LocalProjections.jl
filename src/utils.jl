@@ -184,14 +184,23 @@ length(v::TransformedVar) = length(_geto(v))
 vec(v::Union{AbstractVector,TransformedVar}, subset::Union{BitVector,Nothing},
     vartype::Symbol, horz::Int, TF::Type) = v
 
-show(io::IO, c::TransformedVar{<:Union{Integer,Symbol}}) =
-    print(io, typeof(c).name.name, "(", _geto(c), ")")
+"""
+    Cum{T,S} <: TransformedVar{T}
 
-struct Cum{T} <: TransformedVar{T}
+Cumulatively summed variable for estimating cumulative impulse response.
+State dependency is allowed by specifying a second variable.
+"""
+struct Cum{T,S} <: TransformedVar{T}
     o::T
+    s::S
 end
 
-getcolumn(data, c::Cum) = Cum(getcolumn(data, _geto(c)))
+Cum(n::Symbol) = Cum(n, nothing)
+Cum(i::Integer) = Cum(Int(i), nothing)
+Cum(v::AbstractVector) = Cum(v, nothing)
+
+getcolumn(data, c::Cum) =
+    Cum(getcolumn(data, _geto(c)), c.s===nothing ? nothing : getcolumn(data, c.s))
 
 function vec(c::Cum{<:AbstractVector}, subset::Union{BitVector,Nothing},
         vartype::Symbol, horz::Int, TF::Type)
@@ -199,33 +208,51 @@ function vec(c::Cum{<:AbstractVector}, subset::Union{BitVector,Nothing},
     out = zeros(TF, length(v))
     T = length(v) - horz
     na = convert(TF, NaN)
+    ts = vartype === :y ? horz : 0
+    if vartype === :y || c.s === nothing
+        if subset === nothing
+            for h in 0:horz
+                for t in 1:T
+                    out[ts+t] += coalesce(v[t+h], na)
+                end
+            end
+        else
+            for h in 0:horz
+                for t in 1:T
+                    out[ts+t] += ifelse(subset[t+h], coalesce(v[t+h], na), na)
+                end
+            end
+        end
+    else
+        if subset === nothing
+            for h in 0:horz
+                for t in 1:T
+                    out[t] += coalesce(c.s[t]*v[t+h], na)
+                end
+            end
+        else
+            for h in 0:horz
+                for t in 1:T
+                    out[t] += ifelse(subset[t+h], coalesce(c.s[t]*v[t+h], na), na)
+                end
+            end
+        end
+    end
     if vartype == :y
-        if subset === nothing
-            for h in 0:horz
-                out[horz+1:end] .+= coalesce.(view(v, 1+h:T+h), na)
-            end
-        else
-            for h in 0:horz
-                out[horz+1:end] .= ifelse.(view(subset, 1+h:T+h),
-                    out[horz+1:end].+coalesce.(view(v, 1+h:T+h), na), na)
-            end
-        end
         out[1:horz] .= na
-    elseif vartype == :x
-        if subset === nothing
-            for h in 0:horz
-                out[1:T] .+= coalesce.(view(v, 1+h:T+h), na)
-            end
-        else
-            for h in 0:horz
-                out[1:T] .= ifelse.(view(subset, 1+h:T+h),
-                    out[1:T].+coalesce.(view(v, 1+h:T+h), na), na)
-            end
-        end
+    else
         out[T+1:end] .= na
     end
     return out
 end
+
+_toint(data, ::Nothing) = nothing
+_toint(data, c::Cum) = Cum(_toint(data, _geto(c)), _toint(data, c.s))
+_toname(data, ::Nothing) = nothing
+_toname(data, c::Cum) = Cum(_toname(data, _geto(c)), _toname(data, c.s))
+
+show(io::IO, c::Cum{<:Union{Int,Symbol}}) =
+    print(io, typeof(c).name.name, "(", _geto(c), c.s===nothing ? ")" : ", $(c.s))")
 
 """
     datafile(name::Union{Symbol,String})

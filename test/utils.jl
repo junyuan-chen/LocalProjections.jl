@@ -67,7 +67,7 @@ end
     c = Cum(:ff4_tc)
     @test _geto(c) == :ff4_tc
     v = getcolumn(df, c)
-    @test v === Cum(df.ff4_tc)
+    @test v === Cum(df.ff4_tc, nothing)
     @test size(v, 1) == size(df.ff4_tc, 1)
     @test length(v) == length(df.ff4_tc)
     @test isequal(vec(Cum(df.ff4_tc), nothing, :x, 0, Float64), coalesce.(df.ff4_tc, NaN))
@@ -85,11 +85,28 @@ end
     r[1:2] .= NaN
     v = vec(Cum(df.ff4_tc), nothing, :y, 2, Float64)
     @test v[.~isnan.(v)] ≈ r[.~isnan.(v)]
-    v = vec(Cum(df.ff4_tc), (1:T.<=200).|(1:T.>220), :y, 2, Float64)
+    ss = (1:T.<=200).|(1:T.>220)
+    v = vec(Cum(df.ff4_tc), ss, :y, 2, Float64)
     @test v[.~isnan.(v)] ≈ r[.~isnan.(v)]
     @test isnan.(v[191:230]) == ((1:40).>10).&((1:40).<=32)
 
+    df.s = df.ff4_tc.>0
+    c1 = Cum(:ff, :s)
+    @test _geto(c1) == :ff
+    v1 = getcolumn(df, c1)
+    @test v1 === Cum(df.ff, df.s)
+    @test size(v1, 1) == size(df.ff, 1)
+    @test length(v1) == length(df.ff)
+
+    @test isequal(vec(v1, nothing, :x, 0, Float64), coalesce.(df.ff.*df.s, NaN))
+    @test isequal(vec(v1, nothing, :y, 0, Float64), coalesce.(df.ff, NaN))
+    @test isequal(view(vec(v1, ss, :x, 0, Float64), ss), coalesce.(view(df.ff.*df.s, ss), NaN))
+    @test isequal(view(vec(v1, ss, :y, 0, Float64), ss), coalesce.(view(df.ff, ss), NaN))
+
     @test _toint(df, c) === Cum(16)
+    @test _toint(df, c1) === Cum(5, 20)
     @test _toname(df, Cum(16)) === c
+    @test _toname(df, Cum(5, 20)) === c1
     @test sprint(show, c) == "Cum(ff4_tc)"
+    @test sprint(show, c1) == "Cum(ff, s)"
 end
