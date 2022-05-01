@@ -18,7 +18,7 @@ CodecZlib = "0.6, 0.7"
 DataFrames = "1"
 FFTW = "1"
 StatsBase = "0.33"
-StatsFuns = "0.9"
+StatsFuns = "0.9, 1"
 Tables = "1"
 julia = "1"
 
