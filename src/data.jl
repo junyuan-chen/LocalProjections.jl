@@ -180,7 +180,7 @@ function _makeYX(dt::LPData{TF,Nothing}, horz::Int, isfirststage::Bool=false) wh
         Y = Y[esampleT, :]
     end
     X = Matrix{TF}(undef, T1, nX)
-    for j in 1:nX
+    @inbounds for j in 1:nX
         ir = 1
         for i in 1:T
             if esampleT[i]
@@ -235,7 +235,7 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
         Y = Y[esampleT, :]
     end
     X = Matrix{TF}(undef, T1, nX)
-    for j in 1:nX
+    @inbounds for j in 1:nX
         ir = 1
         i1 = 1
         k1 = 1
@@ -254,7 +254,7 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
         end
     end
     FE = FixedEffect[]
-    for fe in dt.fes
+    @inbounds for fe in dt.fes
         vfe = Vector{eltype(fe)}(undef, T1)
         ir = 1
         k1 = 1
@@ -275,7 +275,7 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
         W = Vector{TF}(undef, T1)
         ir = 1
         k1 = 1
-        for ids in dt.groups
+        @inbounds for ids in dt.groups
             i1 = ids[1] + dt.nlag
             i2 = ids[end] - horz
             for i in i1:i2

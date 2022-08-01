@@ -22,7 +22,7 @@ that generates these files from original data.
 "Replication Data for: Impulse Response Estimation by Smooth Local Projections."
 Harvard Dataverse. https://doi.org/10.7910/DVN/8KQJBJ.
 
-**Gertler, Mark and Peter Karadi.** 2015.
+**Gertler, Mark, and Peter Karadi.** 2015.
 "Replication Data for: Monetary Policy Surprises, Credit Costs, and Economic Activity."
 *American Economic Association* [publisher], Inter-university Consortium for Political and Social Research [distributor]. https://doi.org/10.3886/E114082V1.
 

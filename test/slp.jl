@@ -318,4 +318,21 @@ end
         Leave-one-out CV:             1595.11    Generalized CV:               1594.28
         Akaike information:              7.37    Residual sum of squares:      1592.98
         ──────────────────────────────────────────────────────────────────────────────"""
+
+    # Check the case with Cum but not IV
+    est = SmoothLP(Cum(:g), 3, 3, search=grid([1e-8]))
+    r3 = lp(est, df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g),
+        nlag=4, nhorz=16, minhorz=1, addylag=false)
+    # Compare results with the case without smoothing
+    r3ns = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g),
+        nlag=4, nhorz=16, minhorz=1, addylag=false)
+    @test r3.B[1,1,:] ≈ r3ns.B[1,1,:] atol=1e-7
+
+    # The case with Cum in variables that are not smoothed
+    est = SmoothLP(:newsy, 3, 3, search=grid([1e-8]))
+    r4 = lp(est, df, Cum(:y), xnames=(:newsy, Cum(:g)), wnames=(:newsy, :y, :g),
+        nlag=4, nhorz=16, minhorz=1, addylag=false, subset=df.wwii.==0)
+    r4ns = lp(df, Cum(:y), xnames=(:newsy, Cum(:g)), wnames=(:newsy, :y, :g),
+        nlag=4, nhorz=16, minhorz=1, addylag=false, subset=df.wwii.==0)
+    @test r4.B[1,1,:] ≈ r4ns.B[1,1,:] atol=1e-6
 end

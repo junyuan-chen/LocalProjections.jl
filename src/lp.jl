@@ -331,12 +331,13 @@ function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, sts, fes, pw,
         dt = LPData(ys, xs, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
     end
     for h in minhorz:minhorz+nhorz-1
+        # Handle cases where all data need to be regenerated for each horizon
         if iv !== nothing && firststagebyhorz
             xs[ix_iv] .= _firststage(yfs, xfs, ws, sts, fes, pw, nlag, h, subset, groups;
                 TF=TF)
-            dt = LPData(ys, xs, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
+            dt = LPData(ys, xs, ws, sts, fes, pw, nlag, h, subset, groups, TF)
         elseif any(x->x isa Cum, xs)
-            dt = LPData(ys, xs, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
+            dt = LPData(ys, xs, ws, sts, fes, pw, nlag, h, subset, groups, TF)
         end
         i = h - minhorz + 1
         Bh, Vh, T[i], M[i] = _lp(dt, h, vce)

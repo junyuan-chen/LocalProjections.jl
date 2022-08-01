@@ -486,18 +486,19 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, fes, pw, nlag, minho
     YSr = Vector{Matrix{TF}}(undef, nhorz)
     Xs = Vector{Matrix{TF}}(undef, nhorz)
     T = Vector{Int}(undef, nhorz)
-    if !(iv !== nothing && firststagebyhorz) && !any(x->x isa Cum, xs)
+    if !(iv !== nothing && firststagebyhorz) && !any(x->x isa Cum, view(xs, ix_nsm))
         xs_s = Any[xs[i] for i in ix_nsm]
         dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
     end
     for h in minhorz:minhorz+nhorz-1
+         # Handle cases where all data need to be regenerated for each horizon
         if iv !== nothing && firststagebyhorz
             xs[ix_iv] .= _firststage(yfs, xfs, ws, sts, fes, pw, nlag, h, subset, groups; TF=TF)
             xs_s = Any[xs[i] for i in ix_nsm]
-            dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
-        elseif any(x->x isa Cum, xs)
+            dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, h, subset, groups, TF)
+        elseif any(x->x isa Cum, view(xs, ix_nsm))
             xs_s = Any[xs[i] for i in ix_nsm]
-            dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
+            dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, h, subset, groups, TF)
         end
         # xs could be changed by first-stage regression
         ss = view(xs, ix_sm)
