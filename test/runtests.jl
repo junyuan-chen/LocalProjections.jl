@@ -18,6 +18,7 @@ end
 
 const tests = [
     "utils",
+    "data",
     "lp",
     "slp",
     "vce",

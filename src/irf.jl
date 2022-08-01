@@ -31,7 +31,7 @@ with respect to variable `xwname` based on the estimation result `r`.
 If `lag` is not specified, `xwname` is assumed to be contemporaneous.
 """
 function irf(r::LocalProjectionResult, yname::VarName, xwname::VarName; lag::Int=0)
-    TF = typeof(r).parameters[4]
+    TF = typeof(r).parameters[5]
     H = length(r.T)
     B = Vector{TF}(undef, H)
     SE = Vector{TF}(undef, H)

@@ -309,7 +309,7 @@ end
 function _getcols!(est::SmoothLP, data, xnames)
     ix_sm = Vector{Int}(undef, length(est.names))
     for (i, n) in enumerate(est.names)
-        fr = findfirst(x->x==_toint(data, n), xnames)
+        fr = findfirst(x->x==_toname(data, n), xnames)
         fr === nothing && throw(ArgumentError(
             "Variable $(n) is not found among x variables"))
         ix_sm[i] = fr
@@ -317,30 +317,32 @@ function _getcols!(est::SmoothLP, data, xnames)
     return ix_sm
 end
 
-function _makeYSr(ys, ss, xs, ws, sts, nlag, horz, subset; TF=Float64)
-    Y, X, T, esample = _makeYX(ys, xs, ws, sts, nlag, horz, subset; TF=TF)
-    Tfull = size(ys[1],1)
+function _makeYSr(dt, ss, horz; TF=Float64)
+    Y, X, W, T, esample = _makeYX(dt, horz)
+    Tfull = size(dt.ys[1],1)
     ns = length(ss)
     # Filter valid rows within those filtered by _makeYX
     esampleT = trues(T)
     aux = BitVector(undef, T)
     S = Matrix{TF}(undef, T, ns)
     for j in 1:ns
-        v = view(vec(ss[j], subset, :x, horz, TF), view(nlag+1:Tfull-horz, esample))
-        subset === nothing || j > 1 ||
-            (esampleT .&= view(view(subset, nlag+1:Tfull-horz), esample))
+        v = view(vec(ss[j], dt.subset, :x, horz, TF), view(dt.nlag+1:Tfull-horz, esample))
+        dt.subset === nothing || j > 1 ||
+            (esampleT .&= view(view(dt.subset, dt.nlag+1:Tfull-horz), esample))
         _esample!(esampleT, aux, v)
         copyto!(view(S,esampleT,j), view(v,esampleT))
     end
     T1 = sum(esampleT)
     if T1 < T
         T1 > size(X,2) || throw(ArgumentError(
-            "not enough observations for nlag=$nlag and horz=$horz"))
+            "not enough observations for nlag=$(dt.nlag) and horz=$horz"))
         T = T1
         Y = Y[esampleT, :]
         X = X[esampleT, :]
+        W isa UnitWeights || (W = W[esampleT, :])
         S = S[esampleT, :]
     end
+    W isa UnitWeights || (S .*= sqrt.(W))
     # Partial out X
     YS = [Y S]
     B = X'YS
@@ -475,8 +477,8 @@ function _select(est::SmoothLP{<:GridSearch{DirectSolve}}, y, C, crossy, crossC,
     return λs[iopt[est.criterion]], r, Sdiag
 end
 
-function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, nlag, minhorz, nhorz, vce, subset,
-        iv, ix_iv, yfs, xfs, firststagebyhorz; TF=Float64)
+function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, fes, pw, nlag, minhorz, nhorz,
+        vce, subset, groups, iv, ix_iv, yfs, xfs, firststagebyhorz; TF=Float64)
     length(ys) > 1 && throw(ArgumentError("accept only one outcome variable"))
     ix_sm = _getcols!(est, data, xnames)
     ix_nsm = setdiff(1:length(xs), ix_sm)
@@ -484,15 +486,23 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, nlag, minhorz, nhorz
     YSr = Vector{Matrix{TF}}(undef, nhorz)
     Xs = Vector{Matrix{TF}}(undef, nhorz)
     T = Vector{Int}(undef, nhorz)
+    if !(iv !== nothing && firststagebyhorz) && !any(x->x isa Cum, xs)
+        xs_s = Any[xs[i] for i in ix_nsm]
+        dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
+    end
     for h in minhorz:minhorz+nhorz-1
         if iv !== nothing && firststagebyhorz
-            xs[ix_iv] .= _firststage(yfs, xfs, ws, sts, nlag, h, subset; TF=TF)
+            xs[ix_iv] .= _firststage(yfs, xfs, ws, sts, fes, pw, nlag, h, subset, groups; TF=TF)
+            xs_s = Any[xs[i] for i in ix_nsm]
+            dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
+        elseif any(x->x isa Cum, xs)
+            xs_s = Any[xs[i] for i in ix_nsm]
+            dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
         end
         # xs could be changed by first-stage regression
         ss = view(xs, ix_sm)
-        xs_s = view(xs, ix_nsm)
         i = h - minhorz + 1
-        YSr[i], Xs[i], T[i], _, _ = _makeYSr(ys, ss, xs_s, ws, sts, nlag, h, subset; TF=TF)
+        YSr[i], Xs[i], T[i], _, _ = _makeYSr(dt, ss, h; TF=TF)
     end
     Tall = sum(T)
     nys = size(YSr[1], 2)
@@ -567,8 +577,9 @@ function lp(r::LocalProjectionResult{<:SmoothLP}, vce::CovarianceEstimator)
     slpr = SmoothLPResult(s.θ, Σ, s.bm, s.λ, s.loocv, s.rss, s.gcv, s.aic,
         s.dof_fit, s.dof_res, s.search, s.m)
     return LocalProjectionResult(r.B, V, r.T, r.est, slpr, vce,
-        r.ynames, r.xnames, r.wnames, r.lookupy, r.lookupx, r.lookupw,
-        r.nlag, r.minhorz, r.subset, r.normnames, r.normtars, r.normmults,
+        r.ynames, r.xnames, r.wnames, r.stnames, r.fenames, r.lookupy, r.lookupx, r.lookupw,
+        r.panelid, r.panelweight, r.nlag, r.minhorz, r.subset,
+        r.normnames, r.normtars, r.normmults,
         r.endonames, r.ivnames, r.firststagebyhorz, r.nocons)
 end
 
@@ -618,8 +629,9 @@ function lp(r::LocalProjectionResult{<:SmoothLP}, λ::Real;
     slpr = SmoothLPResult(θ, Σ, bm, λ, loocv, rss, gcv, aic, dof_fit, dof_res,
         r.estres.search, m1)
     return LocalProjectionResult(B, V, r.T, r.est, slpr, vce1,
-        r.ynames, r.xnames, r.wnames, r.lookupy, r.lookupx, r.lookupw,
-        r.nlag, r.minhorz, r.subset, r.normnames, r.normtars, r.normmults,
+        r.ynames, r.xnames, r.wnames, r.stnames, r.fenames, r.lookupy, r.lookupx, r.lookupw,
+        r.panelid, r.panelweight, r.nlag, r.minhorz, r.subset,
+        r.normnames, r.normtars, r.normmults,
         r.endonames, r.ivnames, r.firststagebyhorz, r.nocons)
 end
 

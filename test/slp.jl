@@ -94,39 +94,45 @@ end
 
 @testset "_makeYSr" begin
     T = 100
-    ys, ss, xs = [randn(T)], [randn(T)], [randn(T)]
+    ys, ss, xs = Any[randn(T)], [randn(T)], Any[randn(T)]
     ws = ys
-    res, X, T1, e1, e2 = _makeYSr(ys, ss, xs, ws, nothing, 3, 5, nothing)
+    fes0 = Any[]
+    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 3, 0, nothing, nothing)
+    res, X, T1, e1, e2 = _makeYSr(dt, ss, 5)
     @test T1 == T-8
     @test size(res) == (T1, 2)
     @test all(e1)
     @test all(e2)
 
-    xs = ()
-    res, X, T1, e1, e2 = _makeYSr(ys, ss, xs, ws, nothing, 1, 0, nothing)
+    xs = Any[]
+    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 1, 0, nothing, nothing)
+    res, X, T1, e1, e2 = _makeYSr(dt, ss, 0)
     @test T1 == 99
     @test size(res) == (T1, 2)
     @test all(e1)
     @test all(e2)
 
     ys[1][2], ys[1][3] = NaN, Inf
-    xs = (convert(Vector{Union{Float64, Missing}}, randn(T)),)
+    xs = Any[convert(Vector{Union{Float64, Missing}}, randn(T))]
     xs[1][3] = missing
-    res, X, T1, e1, e2 = _makeYSr(ys, ss, xs, ws, nothing, 1, 0, nothing)
+    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 1, 0, nothing, nothing)
+    res, X, T1, e1, e2 = _makeYSr(dt, ss, 0)
     @test T1 == 96
     @test size(res) == (T1, 2)
     @test e1 == ((1:99).>3)
     @test all(e2)
 
-    res, X, T1, e1, e2 = _makeYSr(ys, ss, xs, ws, nothing, 1, 1, ((1:100).<60).|((1:100).>=70))
+    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 1, 1, ((1:100).<60).|((1:100).>=70), nothing)
+    res, X, T1, e1, e2 = _makeYSr(dt, ss, 1)
     @test T1 == 83
     @test e1 == ((1:98).>3) .& (((1:98).<58) .| ((1:98).>=70))
     @test all(e2)
 
-    ys, xs = [randn(T)], [randn(T)]
+    ys, xs = Any[randn(T)], Any[randn(T)]
     ss[1][2], ss[1][4] = NaN, Inf
     ws = ys
-    res, X, T1, e1, e2 = _makeYSr(ys, ss, xs, ws, nothing, 2, 0, nothing)
+    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 2, 0, nothing, nothing)
+    res, X, T1, e1, e2 = _makeYSr(dt, ss, 0)
     @test T1 == 97
     @test all(e1)
     @test e2 == ((1:98).!=2)

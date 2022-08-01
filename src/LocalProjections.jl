@@ -2,12 +2,14 @@ module LocalProjections
 
 using BSplines: BSplineBasis, basismatrix
 using FFTW: fft!
+using FixedEffectModels: AbstractFixedEffectSolver, Combination, FixedEffect, solve_residuals!
 using LinearAlgebra: I, cholesky!, svd!, ldiv!, inv!, mul!
-using StatsBase: CovarianceEstimator, RegressionModel, StatisticalModel, CoefTable, TestStat
+using StatsBase: CovarianceEstimator, RegressionModel, StatisticalModel, CoefTable, TestStat,
+    AbstractWeights, Weights, UnitWeights, uweights
 using StatsFuns: normccdf, norminvccdf, tdistccdf, tdistinvccdf
 using Tables
 
-import Base: ==, show, size, length, vec
+import Base: ==, show, size, length, vec, view
 import StatsBase: coef, vcov, stderror, confint, coeftable, modelmatrix, residuals
 import Tables: getcolumn
 
@@ -18,6 +20,8 @@ export hamilton_filter,
        TransformedVar,
        Cum,
        datafile,
+
+       LPData,
 
        OLS,
        AbstractEstimator,
@@ -56,6 +60,7 @@ export hamilton_filter,
        irf
 
 include("utils.jl")
+include("data.jl")
 include("lp.jl")
 include("slp.jl")
 include("vce.jl")

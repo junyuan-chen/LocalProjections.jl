@@ -80,7 +80,8 @@ function checktable(data)
 end
 
 # Indicate rows with finite and nonmissing data
-function _esample!(esample::BitVector, aux::BitVector, v::AbstractVector)
+function _esample!(esample::AbstractVector{Bool}, aux::AbstractVector{Bool},
+        v::AbstractVector)
     aux .= isequal.(isfinite.(v), true)
     esample .&= aux
 end
@@ -181,7 +182,7 @@ abstract type TransformedVar{T} end
 _geto(v::TransformedVar) = getfield(v, :o)
 size(v::TransformedVar, dim) = size(_geto(v), dim)
 length(v::TransformedVar) = length(_geto(v))
-vec(v::Union{AbstractVector,TransformedVar}, subset::Union{BitVector,Nothing},
+vec(v::Union{AbstractVector,TransformedVar}, subset::Union{AbstractVector{Bool},Nothing},
     vartype::Symbol, horz::Int, TF::Type) = v
 
 """
@@ -202,7 +203,9 @@ Cum(v::AbstractVector) = Cum(v, nothing)
 getcolumn(data, c::Cum) =
     Cum(getcolumn(data, _geto(c)), c.s===nothing ? nothing : getcolumn(data, c.s))
 
-function vec(c::Cum{<:AbstractVector}, subset::Union{BitVector,Nothing},
+view(c::Cum{<:AbstractVector}, ids) = Cum(view(_geto(c), ids), c.s)
+
+function vec(c::Cum{<:AbstractVector}, subset::Union{<:AbstractVector{Bool},Nothing},
         vartype::Symbol, horz::Int, TF::Type)
     v = c.o
     out = zeros(TF, length(v))
@@ -253,6 +256,34 @@ _toname(data, c::Cum) = Cum(_toname(data, _geto(c)), _toname(data, c.s))
 
 show(io::IO, c::Cum{<:Union{Int,Symbol}}) =
     print(io, typeof(c).name.name, "(", _geto(c), c.s===nothing ? ")" : ", $(c.s))")
+
+# Get indices for consecutive rows with the same values
+function _group(col::AbstractVector)
+    inds = Vector{Int}[]
+    vlast = nothing
+    @inbounds for (i, v) in enumerate(col)
+        if v == vlast
+            push!(last(inds), i)
+        else
+            push!(inds, Int[i])
+            vlast = v
+        end
+    end
+    return inds
+end
+
+# Residualize columns in Y and X with weights W for fixed effects FE
+function _feresiduals!(Y::AbstractVecOrMat, X::AbstractMatrix, FE::Vector{FixedEffect},
+        W::AbstractWeights; nfethreads::Int=Threads.nthreads(),
+        fetol::Real=1e-8, femaxiter::Int=10000)
+    feM = AbstractFixedEffectSolver{Float64}(FE, W, Val{:cpu}, nfethreads)
+    M = Combination(Y, X)
+    _, iters, convs = solve_residuals!(M, feM;
+        tol=fetol, maxiter=femaxiter, progress_bar=false)
+    iter = maximum(iters)
+    conv = all(convs)
+    conv || @warn "no convergence of fixed effect solver in $(iter) iterations"
+end
 
 """
     datafile(name::Union{Symbol,String})

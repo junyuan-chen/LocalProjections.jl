@@ -103,8 +103,6 @@ end
     @test isequal(view(vec(v1, ss, :x, 0, Float64), ss), coalesce.(view(df.ff.*df.s, ss), NaN))
     @test isequal(view(vec(v1, ss, :y, 0, Float64), ss), coalesce.(view(df.ff, ss), NaN))
 
-    @test _toint(df, c) === Cum(16)
-    @test _toint(df, c1) === Cum(5, 20)
     @test _toname(df, Cum(16)) === c
     @test _toname(df, Cum(5, 20)) === c1
     @test sprint(show, c) == "Cum(ff4_tc)"

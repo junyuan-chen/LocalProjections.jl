@@ -25,7 +25,7 @@ end
 @testset "LocalProjectionResult" begin
     B = cat(randn(5,2,1), randn(5,2,1); dims=3)
     V = cat(randn(10,10), randn(10,10); dims=3)
-    r = LocalProjectionResult(B, V, [1,2], LeastSquaresLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
+    r = LocalProjectionResult(B, V, [1,2], LeastSquaresLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], VarName[], VarName[], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), nothing, nothing, 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
     @test coef(r, 1, :x) == B[1,1,1]
     @test coef(r, 2, :w1, yname=:y2, lag=1) == B[2,2,2]
     @test coef(r, 2, :w1, lag=2) == B[4,1,2]
@@ -44,7 +44,7 @@ end
         Outcome variables:              y1 y2    Minimum horizon:                    0
         Regressor:                          x    Lagged controls:                w1 w2
         ──────────────────────────────────────────────────────────────────────────────"""
-    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[:y], VarName[], VarName[:w], Dict{VarName,Int}(:y=>1), Dict{VarName,Int}(), Dict{VarName,Int}(:w=>1), 1, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
+    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[:y], VarName[], VarName[:w], VarName[], VarName[], Dict{VarName,Int}(:y=>1), Dict{VarName,Int}(), Dict{VarName,Int}(:w=>1), nothing, nothing, 1, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 1 lag over 1 horizon:
         ──────────────────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ end
         Outcome variable:                   y    Minimum horizon:                    0
         Regressor:                               Lagged control:                     w
         ──────────────────────────────────────────────────────────────────────────────"""
-    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[Cum(:y)], VarName[Cum(:x)], VarName[:w], Dict{VarName,Int}(Cum(:y)=>1), Dict{VarName,Int}(Cum(:x)=>1), Dict{VarName,Int}(:w=>1), 1, 0, nothing, nothing, nothing, nothing, VarName[Cum(:x)], VarName[:z1,:z2], false, true)
+    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[Cum(:y)], VarName[Cum(:x)], VarName[:w], VarName[:rec, :exp], VarName[], Dict{VarName,Int}(Cum(:y)=>1), Dict{VarName,Int}(Cum(:x)=>1), Dict{VarName,Int}(:w=>1), :pid, nothing, 1, 0, nothing, nothing, nothing, nothing, VarName[Cum(:x)], VarName[:z1,:z2], false, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 1 lag over 1 horizon:
         ──────────────────────────────────────────────────────────────────────────────
@@ -62,95 +62,37 @@ end
         Outcome variable:              Cum(y)    Minimum horizon:                    0
         Regressor:                     Cum(x)    Lagged control:                     w
         Endogenous variable:           Cum(x)    Instruments:                    z1 z2
+        States:                       rec exp    
+        ──────────────────────────────────────────────────────────────────────────────
+        Panel Specifications
+        ──────────────────────────────────────────────────────────────────────────────
+        Unit ID:                          pid    Weight:                 (unit weight)
+        Fixed effects:                 (none)    
         ──────────────────────────────────────────────────────────────────────────────"""
-end
 
-@testset "_makeYX" begin
-    T = 100
-    ys = [randn(T), randn(T)]
-    xs = [randn(T), randn(T)]
-    ws = ys
-    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 3, 5, nothing)
-    @test T1 == T-8
-    @test size(Y) == (T1, 2)
-    @test size(X) == (T1, 8)
-    @test Y[:,1] == ys[1][9:end]
-    @test Y[:,2] == ys[2][9:end]
-    @test X[:,1] == xs[1][4:end-5]
-    @test X[:,3] == ws[1][3:end-6]
-    @test X[:,4] == ws[2][3:end-6]
-    @test X[:,8] == ws[2][1:end-8]
-    @test all(eT)
-
-    sts = (rand(T), rand(T))
-    Y, X, T1, eT = _makeYX(ys, xs, ws, sts, 1, 0, nothing)
-    @test size(X) == (99, 6)
-    @test X[:,1] == xs[1][2:end,1]
-    @test X[:,2] == xs[2][2:end,1]
-    @test X[:,3] == ys[1][1:99,1].*sts[1][2:end]
-    @test X[:,4] == ys[1][1:99,1].*sts[2][2:end]
-    @test X[:,5] == ys[2][1:99,1].*sts[1][2:end]
-    @test X[:,6] == ys[2][1:99,1].*sts[2][2:end]
-    @test all(eT)
-
-    ys = (randn(T),)
-    xs = ()
-    ws = ys
-    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
-    @test T1 == 99
-    @test size(Y) == (T1, 1)
-    @test size(X) == (T1, 1)
-    @test Y == reshape(ys[1][2:end], T1, 1)
-    @test X == reshape(ws[1][1:end-1], T1, 1)
-    @test all(eT)
-
-    ys[1][2], ys[1][3] = NaN, Inf
-    xs = (convert(Vector{Union{Float64, Missing}}, randn(T)),)
-    xs[1][3] = missing
-    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
-    @test T1 == 96
-    @test size(Y) == (T1, 1)
-    @test size(X) == (T1, 2)
-    @test Y == reshape(ys[1][5:end], T1, 1)
-    @test X[:,1] == xs[1][5:end]
-    @test X[:,2] == ws[1][4:end-1]
-    @test eT == ((1:99).>3)
-
-    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 1, 1, (1:100).<=90)
-    @test T1 == 85
-    @test size(Y) == (T1, 1)
-    @test size(X) == (T1, 2)
-    @test Y == reshape(ys[1][6:90], T1, 1)
-    @test X[:,1] == xs[1][5:89]
-    @test X[:,2] == ws[1][4:88]
-    # eT covers 2:99 in full data
-    @test eT == ((1:98).>3) .& ((1:98).<=88)
-
-    Y, X, T1, eT = _makeYX(ys, xs, ws, nothing, 1, 1, ((1:100).<60).|((1:100).>=70))
-    @test T1 == 83
-    @test Y[:] == vcat(ys[1][6:59], ys[1][72:end])
-    @test X[:,1] == vcat(xs[1][5:58], xs[1][71:end-1])
-    @test X[:,2] == vcat(ws[1][4:57], ws[1][70:end-2])
-    @test eT == ((1:98).>3) .& (((1:98).<58) .| ((1:98).>=70))
-
-    ys = ()
-    @test_throws ArgumentError _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
-    ws = ()
-    @test_throws ArgumentError _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
-    @test_throws ArgumentError _makeYX(ys, xs, ws, nothing, 0, 0, nothing)
-
-    ys = ([Inf, NaN, 1.0],)
-    xs = ()
-    ws = ys
-    @test_throws ArgumentError _makeYX(ys, xs, ws, nothing, 1, 0, nothing)
+    r = LocalProjectionResult(B, V, [1,2], LeastSquaresLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], VarName[], VarName[:fe1], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), :pid, :wt, 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, true)
+    @test sprint(show, MIME("text/plain"), r) == """
+        LocalProjectionResult with 2 lags over 2 horizons:
+        ──────────────────────────────────────────────────────────────────────────────
+        Variable Specifications
+        ──────────────────────────────────────────────────────────────────────────────
+        Outcome variables:              y1 y2    Minimum horizon:                    0
+        Regressor:                          x    Lagged controls:                w1 w2
+        ──────────────────────────────────────────────────────────────────────────────
+        Panel Specifications
+        ──────────────────────────────────────────────────────────────────────────────
+        Unit ID:                          pid    Weight:                            wt
+        Fixed effects:                    fe1    
+        ──────────────────────────────────────────────────────────────────────────────"""
 end
 
 @testset "lp" begin
     T = 100
-    ys = [randn(T), randn(T)]
-    xs = [randn(T), randn(T)]
+    ys = Any[randn(T), randn(T)]
+    xs = Any[randn(T), randn(T)]
     ws = ys
-    b, v, t, m = _lp(ys, xs, ws, nothing, 3, 5, SimpleVCE(), nothing)
+    dt = LPData(ys, xs, ws, nothing, Any[], nothing, 3, 0, nothing, nothing)
+    b, v, t, m = _lp(dt, 5, SimpleVCE())
     @test size(b) == (8, 2)
     @test size(v) == (16, 16)
     @test t == 92
@@ -176,6 +118,16 @@ end
     @test vcov(r, 1, :constant) ≈ 0.641933721888132 atol=1e-8
     @test vcov(r, 1, :logcpi, lag1=1) ≈ 0.007331238288153 atol=1e-8
     @test vcov(r, 1, :logcpi, lag1=12) ≈ 0.004780116443880 atol=1e-8
+
+    df[!,:gid] .= 1
+    df[!,:wt] .= 2
+    r1 = lp(df, :ebp, wnames=ns, nlag=12, nhorz=48, panelid=:gid, panelweight=:wt, vce=HRVCE())
+    # Have one fewer coefficient because the constant term is replace by FE
+    @test r1.B ≈ r.B[2:61,:,:]
+    # V is not exactly the same because of the removed intercept
+    @test r1.T ≈ r.T
+    @test r1.fenames == [:gid]
+    @test r1.panelid == :gid
 
     f = irf(r, :ebp, :ff4_tc, lag=1)
     @test coef(f)[1] ≈ 0.394494467439933 atol=1e-8
@@ -206,6 +158,17 @@ end
     @test rn.normmults ≈ [-5.3028242533068495] atol=1e-8
     @test riv.endonames == VarName[:ff]
     @test riv.ivnames == VarName[:ff4_tc]
+
+    # Make sure that panel results with a single unit remain the same
+    r1 = lp(df, :ebp, xnames=:ff4_tc, wnames=(:ff4_tc,), nlag=12, nhorz=2,
+        normalize=:ff4_tc=>:ff, panelid=:gid, panelweight=:wt, vce=HRVCE())
+    # Have one fewer coefficient because the constant term is replace by FE
+    @test r1.B ≈ rn.B[(1:26).!=2,:,:]
+    @test r1.T ≈ rn.T
+    r1 = lp(df, :ebp, xnames=:ff, wnames=(:ff4_tc,), nlag=12, nhorz=2,
+        iv=:ff=>:ff4_tc, panelid=:gid, panelweight=:wt, vce=HRVCE())
+    @test r1.B ≈ riv.B[(1:26).!=2,:,:]
+    @test r1.T ≈ riv.T
 
     @test_throws ArgumentError lp(df, :ebp, xnames=:ff4_tc, normalize=:no=>:ff)
     @test_throws ArgumentError lp(df, :ebp, xnames=:ff, iv=:no=>:ff4_tc)
@@ -270,6 +233,13 @@ end
     @test coef(f2)[8] ≈ .2570200212481 atol=1e-9
     @test coef(f2)[16] ≈ .2225592580744 atol=1e-9
 
+    df[!,:gid] .= 1
+    df[!,:wt] .= 2
+    r3 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g),
+        nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true, subset=df.wwii.==0,
+        panelid=:gid, panelweight=:wt)
+    @test r3.B ≈ r2.B[(1:14).!=2,:,:]
+
     # State dependency
     # Compare estimates generated from `jordagk_twoinstruments.do`
     # Use `bro multexpbh* multrecbh*` to see the Stata results
@@ -313,6 +283,14 @@ end
     @test coef(f2exp)[8] ≈ .2171636455168 atol=1e-9
     @test coef(f2exp)[16] ≈ .2140385336746 atol=1e-9
 
+    r3 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
+        iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
+        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true,
+        subset=df.wwii.==0, panelid=:gid, panelweight=:wt)
+    @test r3.B ≈ r2.B[(1:28).!=4,:,:]
+
+    @test_logs (:warn, "panelweight is ignored when panelid is nothing")
+        lp(df, :y, xnames=:g, panelweight=:wt)
     @test_logs (:warn, "firststagebyhorz=false while endogenous variables contain Cum")
         lp(df, Cum(:y), xnames=Cum(:g), wnames=(:y,), iv=Cum(:g)=>:newsy, addylag=false)
     @test_logs (:warn, "addylag=true while outcome variables contain Cum")
