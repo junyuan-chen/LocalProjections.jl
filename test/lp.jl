@@ -66,7 +66,7 @@ end
         ──────────────────────────────────────────────────────────────────────────────
         Panel Specifications
         ──────────────────────────────────────────────────────────────────────────────
-        Unit ID:                          pid    Weight:                 (unit weight)
+        Unit ID:                          pid    Weights:                    (uniform)
         Fixed effects:                 (none)    
         ──────────────────────────────────────────────────────────────────────────────"""
 
@@ -81,7 +81,7 @@ end
         ──────────────────────────────────────────────────────────────────────────────
         Panel Specifications
         ──────────────────────────────────────────────────────────────────────────────
-        Unit ID:                          pid    Weight:                            wt
+        Unit ID:                          pid    Weights:                           wt
         Fixed effects:                    fe1    
         ──────────────────────────────────────────────────────────────────────────────"""
 end
@@ -310,4 +310,7 @@ end
     f = irf(r, :dlgrgdp, :dstir, lag=1)
     @test f.B[2] ≈ -0.1599185 atol=1e-7
     @test f.B[4] ≈ -0.0047023 atol=1e-7
+
+    r = lp(df, :dlgrgdp, wnames=ws, nlag=3, nhorz=5, panelid=:iso, addpanelidfe=false)
+    @test isempty(r.fenames)
 end

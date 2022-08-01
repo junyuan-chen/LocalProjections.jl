@@ -475,7 +475,7 @@ function _panelinfo(r::LocalProjectionResult{<:Any,<:Any,<:Any,<:Any}, halfwidth
     namefe = length(namefe) + length(fes) > halfwidth ? (namefe,) : namefe
     info = Pair[
         "Unit ID" => r.panelid,
-        "Weight" => r.panelweight === nothing ? "(unit weight)" : r.panelweight,
+        "Weights" => r.panelweight === nothing ? "(uniform)" : r.panelweight,
         namefe => isempty(r.fenames) ? "(none)" : fes
     ]
     return info
