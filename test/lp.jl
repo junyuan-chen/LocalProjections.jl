@@ -295,4 +295,19 @@ end
         lp(df, Cum(:y), xnames=Cum(:g), wnames=(:y,), iv=Cum(:g)=>:newsy, addylag=false)
     @test_logs (:warn, "addylag=true while outcome variables contain Cum")
         lp(df, Cum(:y), xnames=Cum(:g))
+
+    # Compare Stata results from LP_example_panel.do posted on Jordà's website
+    # Need `set type double` in Stata for precision
+    df = exampledata(:jst)
+
+    # Real GDP on STIR
+    ws = (:dlgrgdp, :dlgcpi, :dstir)
+    r = lp(df, :dlgrgdp, wnames=ws, nlag=3, nhorz=5, panelid=:iso)
+    f = irf(r, :dlgrgdp, :dlgrgdp, lag=1)
+    @test f.B[1] ≈ 0.2100997 atol=1e-7
+    @test f.B[3] ≈ 0.0551249 atol=1e-7
+    @test f.B[5] ≈ -.0762001 atol=1e-7
+    f = irf(r, :dlgrgdp, :dstir, lag=1)
+    @test f.B[2] ≈ -0.1599185 atol=1e-7
+    @test f.B[4] ≈ -0.0047023 atol=1e-7
 end

@@ -6,7 +6,7 @@ using CodecZlib: GzipDecompressorStream
 using DataFrames
 using LinearAlgebra: I
 using LocalProjections: kron_fastl, kron_fastr, getscore, _geto,
-    OLS, VarName, _makeYX, _firststage, _lp, _toint, _toname,
+    OLS, VarName, _makeYX, _firststage, _lp, _toname,
     Ridge, _basismatrix, _makeYSr, _makeP
 using Tables: getcolumn
 

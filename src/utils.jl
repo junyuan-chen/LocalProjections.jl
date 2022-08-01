@@ -81,8 +81,15 @@ end
 
 # Indicate rows with finite and nonmissing data
 function _esample!(esample::AbstractVector{Bool}, aux::AbstractVector{Bool},
-        v::AbstractVector)
+        v::AbstractVector{<:Real})
     aux .= isequal.(isfinite.(v), true)
+    esample .&= aux
+end
+
+# For nonnumeric data, only find nonmissing rows
+function _esample!(esample::AbstractVector{Bool}, aux::AbstractVector{Bool},
+        v::AbstractVector)
+    aux .= .!ismissing.(v)
     esample .&= aux
 end
 
@@ -249,8 +256,6 @@ function vec(c::Cum{<:AbstractVector}, subset::Union{<:AbstractVector{Bool},Noth
     return out
 end
 
-_toint(data, ::Nothing) = nothing
-_toint(data, c::Cum) = Cum(_toint(data, _geto(c)), _toint(data, c.s))
 _toname(data, ::Nothing) = nothing
 _toname(data, c::Cum) = Cum(_toname(data, _geto(c)), _toname(data, c.s))
 
