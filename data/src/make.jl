@@ -6,7 +6,7 @@
 # 2) Instantiate the package environment for data/src
 # 3) Run this script with the root folder of the repository being the working directory
 
-using CSV, CodecZlib, DataFrames, ShiftedArrays, XLSX
+using CSV, CodecZlib, DataFrames, ReadStatTables, ShiftedArrays, XLSX
 
 function gk()
     var = CSV.read("data/VAR_data.csv", DataFrame)
@@ -48,11 +48,28 @@ function bb()
     end
 end
 
+lagdiff(x) = x - lag(x)
+
+function jst()
+    cols = [:iso, :year, :rgdpmad, :pop, :cpi, :stir]
+    df = DataFrame(readstat("data/JSTdatasetR6.dta", usecols=cols))
+    df[!,:lgrgdp] = 100.0.*log.(df.rgdpmad.*df.pop)
+    df[!,:lgcpi] = 100.0.*log.(df.cpi)
+    df[!,:year] = convert(Vector{Int}, df.year)
+    df = df[!,Not([:rgdpmad,:pop])]
+    transform!(groupby(df, :iso),
+        :lgrgdp=>lagdiff=>:dlgrgdp, :lgcpi=>lagdiff=>:dlgcpi, :stir=>lagdiff=>:dstir)
+    open(GzipCompressorStream, "data/jst.csv.gz", "w") do stream
+        CSV.write(stream, df)
+    end
+end
+
 function main()
     gk()
     hp()
     rz()
     bb()
+    jst()
 end
 
 main()
