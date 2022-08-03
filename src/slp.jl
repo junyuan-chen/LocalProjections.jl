@@ -303,7 +303,7 @@ struct SmoothLPResult{TF<:AbstractFloat, TS<:ModelSelectionResult} <: AbstractEs
 end
 
 dof_residual(r::LocalProjectionResult{<:SmoothLP}) = dof_residual(r.estres.m)
-dof_tstat(r::LocalProjectionResult{<:SmoothLP}) = dof_residual(r)
+dof_tstat(r::LocalProjectionResult{<:SmoothLP}) = dof_tstat(r.estres.m)
 
 function _basismatrix(order::Int, minh::Int, maxh::Int)
     b = BSplineBasis(order+1, minh-order+1:maxh+order-1)

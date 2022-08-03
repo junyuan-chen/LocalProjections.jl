@@ -359,7 +359,6 @@ end
     r1 = lp(df, :dlgrgdp, wnames=ws, nlag=3, nhorz=1, panelid=:iso, vce=cluster(:iso))
     f1 = irf(r1, :dlgrgdp, :dlgrgdp, lag=1)
     # Construct lags for comparing confidence intervals with FixedEffectModels.jl
-    # The panel structure is not respected purely for testing purposes
     lws = []
     for var in ws
         for l in 1:3

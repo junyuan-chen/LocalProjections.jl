@@ -98,8 +98,8 @@ const EWC = EqualWeightedCosine
 HARVCE(lr::EqualWeightedCosine; bw=_ewcbw, cv=_ewccv, pv=_ewcpv) = HARVCE(lr, bw, cv, pv)
 
 _ewcbw(T::Integer) = round(Int, 0.4*T^(2/3))
-_ewccv(level::Real, bw::Int) = tdistinvccdf(bw, (1.0-level)/2.0)
-_ewcpv(ts::Real, bw::Int) = 2.0*tdistccdf(bw, abs(ts))
+_ewccv(level::Real, bw::Int) = tdistinvccdf(bw, (1-level)/2)
+_ewcpv(ts::Real, bw::Int) = 2 * tdistccdf(bw, abs(ts))
 
 function lrv(vce::HARVCE{EqualWeightedCosine}, sc::AbstractMatrix)
     T, K = size(sc)
