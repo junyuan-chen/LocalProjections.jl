@@ -7,6 +7,7 @@ struct ImpulseResponse{TF<:AbstractFloat, VCE<:CovarianceEstimator} <: Statistic
     B::Vector{TF}
     SE::Vector{TF}
     T::Vector{Int}
+    doftstat::Union{Vector{Int},Int}
     vce::VCE
     yname::VarName
     xname::VarName
@@ -17,7 +18,8 @@ coef(f::ImpulseResponse) = f.B
 stderror(f::ImpulseResponse) = f.SE
 
 function confint(f::ImpulseResponse; level::Real=0.9, horz=Colon())
-    scale = criticalvalue.(Ref(f.vce), level, view(f.T, horz))
+    doftstat = f.doftstat isa Vector ? view(f.doftstat, horz) : round(Int, f.doftstat)
+    scale = criticalvalue.(Ref(f.vce), level, view(f.T, horz), doftstat)
     se = stderror(f)[horz]
     b = coef(f)[horz]
     return b .- scale .* se, b .+ scale .* se
@@ -39,7 +41,10 @@ function irf(r::LocalProjectionResult, yname::VarName, xwname::VarName; lag::Int
         B[h] = coef(r, h, xwname, yname=yname, lag=lag)
         SE[h] = sqrt(vcov(r, h, xwname, yname1=yname, lag1=lag))
     end
-    return ImpulseResponse(B, SE, r.T, r.vce, yname, xwname, r.minhorz)
+    doftstat = dof_tstat(r)
+    # For ridge regression, dof is a float
+    doftstat isa Real && (doftstat = round(Int, doftstat))
+    return ImpulseResponse(B, SE, r.T, doftstat, r.vce, yname, xwname, r.minhorz)
 end
 
 function coeftable(f::ImpulseResponse;
@@ -57,7 +62,8 @@ function coeftable(f::ImpulseResponse;
         cnames = f.minhorz:f.minhorz+H-1
     end
     ts = cf ./ se
-    pv = pvalue.(Ref(f.vce), ts, view(f.T, horz))
+    doftstat = f.doftstat isa Vector ? view(f.doftstat, horz) : round(Int, f.doftstat)
+    pv = pvalue.(Ref(f.vce), ts, view(f.T, horz), doftstat)
     levstr = isinteger(level*100) ? string(Integer(level*100)) : string(level*100)
     return CoefTable(Vector[cf, se, ts, pv, cil, ciu],
         ["Estimate", "Std. Error", "z", "Pr(>|z|)", "Lower $levstr%", "Upper $levstr%"],

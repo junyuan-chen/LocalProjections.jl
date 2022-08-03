@@ -1,19 +1,21 @@
 vcov(m, ::Nothing) = nothing
 
 """
-    criticalvalue(vce::CovarianceEstimator, level::Real, T::Int)
+    criticalvalue(vce::CovarianceEstimator, level::Real, T::Int, dofr::Int)
 
-Return the critical value for `vce` at the given `level` when the sample has `T` periods.
+Return the critical value for `vce` at the given `level` when the sample has `T` periods
+and the residual degrees of freedom is `dofr`.
 """
-criticalvalue(::CovarianceEstimator, level::Real, T::Int) = norminvccdf((1.0-level)/2.0)
+criticalvalue(::CovarianceEstimator, level::Real, T::Int, dofr::Int) =
+    tdistinvccdf(dofr, (1 - level) / 2)
 
 """
-    pvalue(vce::CovarianceEstimator, ts::Real, T::Int)
+    pvalue(vce::CovarianceEstimator, ts::Real, T::Int, dofr::Int)
 
 Return the p-value for test statistic `ts` associated with `vce`
-when the sample has `T` periods.
+when the sample has `T` periods and the residual degrees of freedom is `dofr`.
 """
-pvalue(::CovarianceEstimator, ts::Real, T::Int) = 2.0*normccdf(abs(ts))
+pvalue(::CovarianceEstimator, ts::Real, T::Int, dofr::Int) = 2 * tdistccdf(dofr, abs(ts))
 
 """
     SimpleVCE <: CovarianceEstimator
@@ -22,10 +24,7 @@ Simple variance-covariance estimator.
 """
 struct SimpleVCE <: CovarianceEstimator end
 
-function vcov(m::OLS, ::SimpleVCE)
-    T, K = size(m.X)
-    return kron(m.invXX, m.resid'm.resid)./(T-K)
-end
+vcov(m::OLS, ::SimpleVCE) = kron(m.invXX, m.resid'm.resid) ./ dof_residual(m)
 
 show(io::IO, ::MIME"text/plain", ::SimpleVCE) =
     print(io, "Simple variance-covariance estimator")
@@ -38,14 +37,14 @@ Eicker-Huber-White heteroskedasticity-robust variance-covariance estimator.
 struct HRVCE <: CovarianceEstimator end
 
 function vcov(m::OLS, ::HRVCE)
-    T, K = size(m.X)
-    return T/(T-K).*kron_fastr(m.invXX, kron_fastr(m.invXX, m.score'm.score)')'
+    T = size(m.X, 1)
+    return T/dof_residual(m) * kron_fastr(m.invXX, kron_fastr(m.invXX, m.score'm.score)')'
 end
 
 function vcov(m::Ridge, ::HRVCE)
     T = size(m.C, 1)
     S = m.score'm.score
-    return T/(m.dof_res-m.dof_adj) * m.invCCP * S * m.invCCP
+    return T/dof_residual(m) * m.invCCP * S * m.invCCP
 end
 
 show(io::IO, ::MIME"text/plain", ::HRVCE) =
@@ -99,8 +98,8 @@ const EWC = EqualWeightedCosine
 HARVCE(lr::EqualWeightedCosine; bw=_ewcbw, cv=_ewccv, pv=_ewcpv) = HARVCE(lr, bw, cv, pv)
 
 _ewcbw(T::Integer) = round(Int, 0.4*T^(2/3))
-_ewccv(level::Real, bw::Int) = tdistinvccdf(bw, (1.0-level)/2.0)
-_ewcpv(ts::Real, bw::Int) = 2.0*tdistccdf(bw, abs(ts))
+_ewccv(level::Real, bw::Int) = tdistinvccdf(bw, (1-level)/2)
+_ewcpv(ts::Real, bw::Int) = 2 * tdistccdf(bw, abs(ts))
 
 function lrv(vce::HARVCE{EqualWeightedCosine}, sc::AbstractMatrix)
     T, K = size(sc)
@@ -118,19 +117,24 @@ show(io::IO, ::MIME"text/plain", ::EqualWeightedCosine) =
     print(io, "Equal-weighted cosine transform")
 
 function vcov(m::OLS, vce::HARVCE)
-    T, K = size(m.X)
-    return T/(T-K).*kron_fastr(m.invXX, kron_fastr(m.invXX, lrv(vce, m.score))')'
+    T = size(m.X, 1)
+    return T/dof_residual(m) * kron_fastr(m.invXX, kron_fastr(m.invXX, lrv(vce, m.score))')'
 end
 
 function vcov(m::Ridge, vce::HARVCE)
     T = size(m.C, 1)
-    return T/(m.dof_res-m.dof_adj) * m.invCCP * lrv(vce, m.score) * m.invCCP
+    return T/dof_residual(m) * m.invCCP * lrv(vce, m.score) * m.invCCP
 end
 
-criticalvalue(vce::HARVCE, level::Real, T::Int) = vce.cv(level, vce.bw(T))
-pvalue(vce::HARVCE, ts::Real, T::Int) = vce.pv(ts, vce.bw(T))
+criticalvalue(vce::HARVCE, level::Real, T::Int, dofr::Int) = vce.cv(level, vce.bw(T))
+pvalue(vce::HARVCE, ts::Real, T::Int, dofr::Int) = vce.pv(ts, vce.bw(T))
 
 function show(io::IO, ::MIME"text/plain", vce::HARVCE)
     println(io, "Heteroskedasticity-autocorrelation-robust variance-covariance estimator:")
     print(io, "  Long-run variance estimator: ", sprint(show, MIME("text/plain"), vce.lr))
+end
+
+# Allow OLS to work with ClusterCovariance from Vcov.jl
+function vcov(m::OLS, vce::ClusterCovariance)
+    pinvertible(Symmetric(m.invXX * S_hat(m, vce) * m.invXX))
 end

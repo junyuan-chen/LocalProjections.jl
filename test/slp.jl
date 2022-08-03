@@ -97,7 +97,8 @@ end
     ys, ss, xs = Any[randn(T)], [randn(T)], Any[randn(T)]
     ws = ys
     fes0 = Any[]
-    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 3, 0, nothing, nothing)
+    clus0 = Any[]
+    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 3, 0, nothing, nothing)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 5)
     @test T1 == T-8
     @test size(res) == (T1, 2)
@@ -105,7 +106,7 @@ end
     @test all(e2)
 
     xs = Any[]
-    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 1, 0, nothing, nothing)
+    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 1, 0, nothing, nothing)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 0)
     @test T1 == 99
     @test size(res) == (T1, 2)
@@ -115,14 +116,14 @@ end
     ys[1][2], ys[1][3] = NaN, Inf
     xs = Any[convert(Vector{Union{Float64, Missing}}, randn(T))]
     xs[1][3] = missing
-    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 1, 0, nothing, nothing)
+    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 1, 0, nothing, nothing)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 0)
     @test T1 == 96
     @test size(res) == (T1, 2)
     @test e1 == ((1:99).>3)
     @test all(e2)
 
-    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 1, 1, ((1:100).<60).|((1:100).>=70), nothing)
+    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 1, 1, ((1:100).<60).|((1:100).>=70), nothing)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 1)
     @test T1 == 83
     @test e1 == ((1:98).>3) .& (((1:98).<58) .| ((1:98).>=70))
@@ -131,7 +132,7 @@ end
     ys, xs = Any[randn(T)], Any[randn(T)]
     ss[1][2], ss[1][4] = NaN, Inf
     ws = ys
-    dt = LPData(ys, xs, ws, nothing, fes0, nothing, 2, 0, nothing, nothing)
+    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 2, 0, nothing, nothing)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 0)
     @test T1 == 97
     @test all(e1)
@@ -150,10 +151,14 @@ end
     @test f1.B ≈ f0.B atol=1e-4
     # Check HR confidence interval
     ci1 = confint(f1)
-    @test ci1[1][1] ≈ -0.04758915684832821 atol=1e-8
-    @test ci1[2][1] ≈ 0.8758551271581806 atol=1e-8
-    @test ci1[1][10] ≈ -0.35800938178031794 atol=1e-8
-    @test ci1[2][10] ≈ 2.265871824705655 atol=1e-8
+    @test ci1[1][1] ≈ -0.12201693146448783 atol=1e-8
+    @test ci1[2][1] ≈ 0.9502829017743402 atol=1e-8
+    @test ci1[1][10] ≈ -0.5694889939392841 atol=1e-8
+    @test ci1[2][10] ≈ 2.4773514368646214 atol=1e-8
+    @test r1.estres.m.dof_adj == 48*61
+    # With λ=1e-8, the dofr is smaller than that for least-squares LP (8280)
+    @test dof_residual(r1) ≈ 8233.90911815367 atol=1e-6
+    @test dof_tstat(r1) == dof_residual(r1)
 
     @test sprint(show, MIME("text/plain"), r1) == """
         LocalProjectionResult with 12 lags over 48 horizons:
@@ -178,7 +183,7 @@ end
     ns = (:ir, :pi, :yg)
     # 194 is their optimal smoothing parameter
     est = SmoothLP(:ir, 3, 2, search=grid(194), criterion=LOOCV())
-    r1 = lp(est, df, :yg, xnames=ns, wnames=ns, nlag=4, nhorz=20, minhorz=1)
+    r1 = lp(est, df, :yg, xnames=ns, wnames=ns, nlag=4, nhorz=20, minhorz=1, vce=HARVCE(EWC()))
     # δ is the normalization factor they use taken from Matlab
     δ = 0.802327024988408
     f1 = irf(r1, :yg, :ir)
@@ -195,10 +200,10 @@ end
 
     # Check EWC confidence interval
     ci1 = confint(f1)
-    @test ci1[1][1] ≈ -0.8571544691033884 atol=1e-8
-    @test ci1[2][1] ≈ 0.3850826992477342 atol=1e-8
-    @test ci1[1][10] ≈ 0.020165100998330715 atol=1e-8
-    @test ci1[2][10] ≈ 0.34552900750920656 atol=1e-8
+    @test ci1[1][1] ≈ -0.8830584463829632 atol=1e-8
+    @test ci1[2][1] ≈ 0.4109866765273089 atol=1e-8
+    @test ci1[1][10] ≈ 0.013380390754119786 atol=1e-8
+    @test ci1[2][10] ≈ 0.3523137177534175 atol=1e-8
 
     # Compare results based on DemmlerReinsch and DirectSolve
     gbb = 194.0.*(1:0.5:10)
@@ -245,10 +250,10 @@ end
     @test r4.V ≈ r0.V
     f4 = irf(r4, :yg, :ir)
     ci4 = confint(f4)
-    @test ci4[1][1] ≈ -0.6790290214946426 atol=1e-8
-    @test ci4[2][1] ≈ 0.20695725163898837 atol=1e-8
-    @test ci4[1][10] ≈ -0.06529955673073387 atol=1e-8
-    @test ci4[2][10] ≈ 0.4309936652382712 atol=1e-8
+    @test ci4[1][1] ≈ -0.6976347030646475 atol=1e-8
+    @test ci4[2][1] ≈ 0.22556293320899323 atol=1e-8
+    @test ci4[1][10] ≈ -0.07572169749443655 atol=1e-8
+    @test ci4[2][10] ≈ 0.44141580600197383 atol=1e-8
 
     r5 = lp(r1, 194.0, vce=HRVCE())
     @test r5.B ≈ r1.B
@@ -279,27 +284,28 @@ end
     df = exampledata(:rz)
     est = SmoothLP(Cum(:g), 3, 3, search=grid([1, 1e3, 1e5]))
     r1 = lp(est, df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
-        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, subset=df.wwii.==0)
+        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, subset=df.wwii.==0,
+        vce=HARVCE(EWC()))
     @test all(i->i==3, values(r1.estres.search.iopt))
     f1 = irf(r1, Cum(:y), Cum(:g))
     @test coef(f1)[1] ≈ 0.6969380791400279 atol=1e-8
     @test coef(f1)[9] ≈ 0.8444504165548141 atol=1e-8
     @test coef(f1)[17] ≈ 0.7343077490303411 atol=1e-8
-    @test stderror(f1)[1] ≈ 0.46635397544693047 atol=1e-8
-    @test stderror(f1)[9] ≈ 0.08475156240143418 atol=1e-8
-    @test stderror(f1)[17] ≈ 0.12534835370652056 atol=1e-8
+    @test stderror(f1)[1] ≈ 0.4726399483395968 atol=1e-8
+    @test stderror(f1)[9] ≈ 0.0858939264679245 atol=1e-8
+    @test stderror(f1)[17] ≈ 0.1270379208490072 atol=1e-8
 
     r2 = lp(est, df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g),
         iv=Cum(:g)=>(:newsy, :g), nlag=4, nhorz=16, minhorz=1, addylag=false,
-        firststagebyhorz=true, subset=df.wwii.==0)
+        firststagebyhorz=true, subset=df.wwii.==0, vce=HARVCE(EWC()))
     @test all(i->i==3, values(r2.estres.search.iopt))
     f2 = irf(r2, Cum(:y), Cum(:g))
     @test coef(f2)[1] ≈ -0.178375389687782 atol=1e-8
     @test coef(f2)[8] ≈ 0.2573602225267132 atol=1e-8
     @test coef(f2)[16] ≈ 0.23087128211782626 atol=1e-8
-    @test stderror(f2)[1] ≈ 0.09017317177271794 atol=1e-8
-    @test stderror(f2)[8] ≈ 0.03145777721639394 atol=1e-8
-    @test stderror(f2)[16] ≈ 0.06985430057347854 atol=1e-8
+    @test stderror(f2)[1] ≈ 0.09138628413910047 atol=1e-8
+    @test stderror(f2)[8] ≈ 0.03188098311909736 atol=1e-8
+    @test stderror(f2)[16] ≈ 0.07079406030695458 atol=1e-8
 
     @test sprint(show, MIME("text/plain"), r2) == """
         LocalProjectionResult with 4 lags over 16 horizons:
@@ -309,6 +315,7 @@ end
         Outcome variable:              Cum(y)    Minimum horizon:                    1
         Regressors:           Cum(g) constant    Lagged controls:            newsy y g
         Endogenous variable:           Cum(g)    Instruments:                  newsy g
+        Kleibergen-Paap rk:   126.03 [<1e-54]    
         ──────────────────────────────────────────────────────────────────────────────
         Smooth Local Projection
         ──────────────────────────────────────────────────────────────────────────────
@@ -335,4 +342,7 @@ end
     r4ns = lp(df, Cum(:y), xnames=(:newsy, Cum(:g)), wnames=(:newsy, :y, :g),
         nlag=4, nhorz=16, minhorz=1, addylag=false, subset=df.wwii.==0)
     @test r4.B[1,1,:] ≈ r4ns.B[1,1,:] atol=1e-6
+
+    @test_throws ArgumentError lp(est, df, (:y,:g), xnames=:newsy, wnames=:newsy)
+    @test_throws ArgumentError lp(est, df, :y, xnames=:newsy, wnames=:newsy, vce=cluster(:iso))
 end
