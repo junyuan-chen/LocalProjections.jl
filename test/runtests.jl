@@ -4,10 +4,12 @@ using LocalProjections
 using CSV
 using CodecZlib: GzipDecompressorStream
 using DataFrames
+using FixedEffectModels
 using LinearAlgebra: I
 using LocalProjections: kron_fastl, kron_fastr, getscore, _geto,
     OLS, VarName, _makeYX, _firststage, _lp, _toname,
     Ridge, _basismatrix, _makeYSr, _makeP
+using ShiftedArrays
 using Tables: getcolumn
 
 function exampledata(name::Union{Symbol,String})

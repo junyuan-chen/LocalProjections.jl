@@ -23,6 +23,8 @@ end
 modelmatrix(m::Ridge) = m.C
 coef(m::Ridge) = m.θ
 residuals(m::Ridge) = m.resid
+dof_residual(m::Ridge) = m.dof_res - m.dof_adj
+dof_tstat(m::Ridge) = dof_residual(m)
 
 show(io::IO, ::Ridge) = print(io, "Ridge regression")
 
@@ -300,6 +302,9 @@ struct SmoothLPResult{TF<:AbstractFloat, TS<:ModelSelectionResult} <: AbstractEs
     m::Ridge{TF}
 end
 
+dof_residual(r::LocalProjectionResult{<:SmoothLP}) = dof_residual(r.estres.m)
+dof_tstat(r::LocalProjectionResult{<:SmoothLP}) = dof_residual(r)
+
 function _basismatrix(order::Int, minh::Int, maxh::Int)
     b = BSplineBasis(order+1, minh-order+1:maxh+order-1)
     return basismatrix(b, minh:maxh)[:, order:end-order+1]
@@ -318,7 +323,7 @@ function _getcols!(est::SmoothLP, data, xnames)
 end
 
 function _makeYSr(dt, ss, horz; TF=Float64)
-    Y, X, W, T, esample = _makeYX(dt, horz)
+    Y, X, CLU, W, T, esample, doffe = _makeYX(dt, horz)
     Tfull = size(dt.ys[1],1)
     ns = length(ss)
     # Filter valid rows within those filtered by _makeYX
@@ -477,32 +482,40 @@ function _select(est::SmoothLP{<:GridSearch{DirectSolve}}, y, C, crossy, crossC,
     return λs[iopt[est.criterion]], r, Sdiag
 end
 
-function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, fes, pw, nlag, minhorz, nhorz,
-        vce, subset, groups, iv, ix_iv, yfs, xfs, firststagebyhorz; TF=Float64)
+function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, fes, clus, pw, nlag,
+        minhorz, nhorz, vce, subset, groups, iv, ix_iv, nendo, niv, yfs, xfs,
+        firststagebyhorz, testweakiv; TF=Float64)
     length(ys) > 1 && throw(ArgumentError("accept only one outcome variable"))
+    vce isa ClusterCovariance && throw(ArgumentError(
+        "cluster-robust VCE is not supported for smoothed local projection"))
     ix_sm = _getcols!(est, data, xnames)
     ix_nsm = setdiff(1:length(xs), ix_sm)
     nx = sum(ix_nsm) + length(ws)*nlag
     YSr = Vector{Matrix{TF}}(undef, nhorz)
     Xs = Vector{Matrix{TF}}(undef, nhorz)
     T = Vector{Int}(undef, nhorz)
-    if !(iv !== nothing && firststagebyhorz) && !any(x->x isa Cum, view(xs, ix_nsm))
+    firststagebyhorz = iv !== nothing && firststagebyhorz
+    if !firststagebyhorz && !any(x->x isa Cum, view(xs, ix_nsm))
         xs_s = Any[xs[i] for i in ix_nsm]
-        dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, minhorz, subset, groups, TF)
+        dt = LPData(ys, xs_s, ws, sts, fes, clus, pw, nlag, minhorz, subset, groups, TF)
     end
+    F_kps = firststagebyhorz ? Vector{Float64}(undef, nhorz) : nothing
+    p_kps = firststagebyhorz ? Vector{Float64}(undef, nhorz) : nothing
     for h in minhorz:minhorz+nhorz-1
+        i = h - minhorz + 1
          # Handle cases where all data need to be regenerated for each horizon
-        if iv !== nothing && firststagebyhorz
-            xs[ix_iv] .= _firststage(yfs, xfs, ws, sts, fes, pw, nlag, h, subset, groups; TF=TF)
+        if firststagebyhorz
+            fitted, F_kps[i], p_kps[i] = _firststage(nendo, niv, yfs, xfs,
+                ws, sts, fes, clus, pw, nlag, h, subset, groups, testweakiv, vce; TF=TF)
+            xs[ix_iv] .= fitted
             xs_s = Any[xs[i] for i in ix_nsm]
-            dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, h, subset, groups, TF)
+            dt = LPData(ys, xs_s, ws, sts, fes, clus, pw, nlag, h, subset, groups, TF)
         elseif any(x->x isa Cum, view(xs, ix_nsm))
             xs_s = Any[xs[i] for i in ix_nsm]
-            dt = LPData(ys, xs_s, ws, sts, fes, pw, nlag, h, subset, groups, TF)
+            dt = LPData(ys, xs_s, ws, sts, fes, clus, pw, nlag, h, subset, groups, TF)
         end
         # xs could be changed by first-stage regression
         ss = view(xs, ix_sm)
-        i = h - minhorz + 1
         YSr[i], Xs[i], T[i], _, _ = _makeYSr(dt, ss, h; TF=TF)
     end
     Tall = sum(T)
@@ -559,7 +572,7 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, fes, pw, nlag, minho
         V[:,:,h] = reshape(view(Vfull, inds, inds), ns, ns, 1)
     end
     slpr = SmoothLPResult(θ, Σ, bm, λ, loocv, rss, gcv, aic, dof_fit, dof_res, sr, m)
-    return B, V, T, slpr
+    return B, V, T, slpr, F_kps, p_kps
 end
 
 function lp(r::LocalProjectionResult{<:SmoothLP}, vce::CovarianceEstimator)
@@ -581,7 +594,7 @@ function lp(r::LocalProjectionResult{<:SmoothLP}, vce::CovarianceEstimator)
         r.ynames, r.xnames, r.wnames, r.stnames, r.fenames, r.lookupy, r.lookupx, r.lookupw,
         r.panelid, r.panelweight, r.nlag, r.minhorz, r.subset,
         r.normnames, r.normtars, r.normmults,
-        r.endonames, r.ivnames, r.firststagebyhorz, r.nocons)
+        r.endonames, r.ivnames, r.firststagebyhorz, r.F_kp, r.p_kp, r.nocons)
 end
 
 """
@@ -633,7 +646,7 @@ function lp(r::LocalProjectionResult{<:SmoothLP}, λ::Real;
         r.ynames, r.xnames, r.wnames, r.stnames, r.fenames, r.lookupy, r.lookupx, r.lookupw,
         r.panelid, r.panelweight, r.nlag, r.minhorz, r.subset,
         r.normnames, r.normtars, r.normmults,
-        r.endonames, r.ivnames, r.firststagebyhorz, r.nocons)
+        r.endonames, r.ivnames, r.firststagebyhorz, r.F_kp, r.p_kp, r.nocons)
 end
 
 _estimatortitle(::LocalProjectionResult{<:SmoothLP}) = "Smooth Local Projection"

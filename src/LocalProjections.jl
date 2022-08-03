@@ -2,19 +2,27 @@ module LocalProjections
 
 using BSplines: BSplineBasis, basismatrix
 using FFTW: fft!
-using FixedEffectModels: AbstractFixedEffectSolver, Combination, FixedEffect, solve_residuals!
-using LinearAlgebra: I, cholesky!, svd!, ldiv!, inv!, mul!
-using StatsBase: CovarianceEstimator, RegressionModel, StatisticalModel, CoefTable, TestStat,
+using FixedEffectModels: AbstractFixedEffectSolver, Combination, FixedEffect,
+    solve_residuals!, isnested, nunique
+using GroupedArrays: GroupedArray
+using LinearAlgebra: I, Symmetric, cholesky!, svd!, ldiv!, inv!, mul!
+using StatsAPI: RegressionModel, StatisticalModel
+using StatsBase: CovarianceEstimator, CoefTable, TestStat,
     AbstractWeights, Weights, UnitWeights, uweights
-using StatsFuns: normccdf, norminvccdf, tdistccdf, tdistinvccdf
+using StatsFuns: tdistccdf, tdistinvccdf, chisqccdf
 using Tables
+using Vcov: ClusterCovariance, VcovData, robust, cluster, names, nclusters,
+    ranktest!, pinvertible
 
 import Base: ==, show, size, length, vec, view
-import StatsBase: coef, vcov, stderror, confint, coeftable, modelmatrix, residuals
+import StatsAPI: coef, vcov, stderror, confint, coeftable, modelmatrix, residuals, dof_residual
 import Tables: getcolumn
+import Vcov: S_hat, dof_tstat
 
-# Reexport objects from StatsBase
-export coef, vcov, stderror, confint, coeftable, modelmatrix, residuals
+# Reexport objects from StatsAPI
+export coef, vcov, stderror, confint, coeftable, modelmatrix, residuals, dof_residual
+# Reexport objects from Vcov
+export cluster, dof_tstat
 
 export hamilton_filter,
        TransformedVar,
