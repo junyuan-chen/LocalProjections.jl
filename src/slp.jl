@@ -282,8 +282,8 @@ See also [`SmoothLP`](@ref) and [`LocalProjectionResult`](@ref).
 - `rss::TF`: residual sum of squares.
 - `gcv::TF`: generalized cross validation error.
 - `aic::TF`: Akaike information criterion value.
-- `dof_fit::TF`: degree of freedom of the fit.
-- `dof_res::TF`: residual degree of freedom.
+- `dof_fit::TF`: degrees of freedom of the fit.
+- `dof_res::TF`: residual degrees of freedom.
 - `search::TS`: additional results from model selection.
 - `m::Ridge{TF}`: data from the ridge regression.
 """
