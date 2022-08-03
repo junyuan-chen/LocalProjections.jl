@@ -24,10 +24,7 @@ Simple variance-covariance estimator.
 """
 struct SimpleVCE <: CovarianceEstimator end
 
-function vcov(m::OLS, ::SimpleVCE)
-    T, K = size(m.X)
-    return kron(m.invXX, m.resid'm.resid)./(T-K)
-end
+vcov(m::OLS, ::SimpleVCE) = kron(m.invXX, m.resid'm.resid) ./ dof_residual(m)
 
 show(io::IO, ::MIME"text/plain", ::SimpleVCE) =
     print(io, "Simple variance-covariance estimator")
@@ -40,14 +37,14 @@ Eicker-Huber-White heteroskedasticity-robust variance-covariance estimator.
 struct HRVCE <: CovarianceEstimator end
 
 function vcov(m::OLS, ::HRVCE)
-    T, K = size(m.X)
-    return T/(T-K).*kron_fastr(m.invXX, kron_fastr(m.invXX, m.score'm.score)')'
+    T = size(m.X, 1)
+    return T/dof_residual(m) * kron_fastr(m.invXX, kron_fastr(m.invXX, m.score'm.score)')'
 end
 
 function vcov(m::Ridge, ::HRVCE)
     T = size(m.C, 1)
     S = m.score'm.score
-    return T/(m.dof_res-m.dof_adj) * m.invCCP * S * m.invCCP
+    return T/dof_residual(m) * m.invCCP * S * m.invCCP
 end
 
 show(io::IO, ::MIME"text/plain", ::HRVCE) =
@@ -120,13 +117,13 @@ show(io::IO, ::MIME"text/plain", ::EqualWeightedCosine) =
     print(io, "Equal-weighted cosine transform")
 
 function vcov(m::OLS, vce::HARVCE)
-    T, K = size(m.X)
-    return T/(T-K).*kron_fastr(m.invXX, kron_fastr(m.invXX, lrv(vce, m.score))')'
+    T = size(m.X, 1)
+    return T/dof_residual(m) * kron_fastr(m.invXX, kron_fastr(m.invXX, lrv(vce, m.score))')'
 end
 
 function vcov(m::Ridge, vce::HARVCE)
     T = size(m.C, 1)
-    return T/(m.dof_res-m.dof_adj) * m.invCCP * lrv(vce, m.score) * m.invCCP
+    return T/dof_residual(m) * m.invCCP * lrv(vce, m.score) * m.invCCP
 end
 
 criticalvalue(vce::HARVCE, level::Real, T::Int, dofr::Int) = vce.cv(level, vce.bw(T))

@@ -151,10 +151,14 @@ end
     @test f1.B ≈ f0.B atol=1e-4
     # Check HR confidence interval
     ci1 = confint(f1)
-    @test ci1[1][1] ≈ -0.047627694584329305 atol=1e-8
-    @test ci1[2][1] ≈ 0.8758936648941817 atol=1e-8
-    @test ci1[1][10] ≈ -0.3581188831573726 atol=1e-8
-    @test ci1[2][10] ≈ 2.2659813260827097 atol=1e-8
+    @test ci1[1][1] ≈ -0.12201693146448783 atol=1e-8
+    @test ci1[2][1] ≈ 0.9502829017743402 atol=1e-8
+    @test ci1[1][10] ≈ -0.5694889939392841 atol=1e-8
+    @test ci1[2][10] ≈ 2.4773514368646214 atol=1e-8
+    @test r1.estres.m.dof_adj == 48*61
+    # With λ=1e-8, the dofr is smaller than that for least-squares LP (8280)
+    @test dof_residual(r1) ≈ 8233.90911815367 atol=1e-6
+    @test dof_tstat(r1) == dof_residual(r1)
 
     @test sprint(show, MIME("text/plain"), r1) == """
         LocalProjectionResult with 12 lags over 48 horizons:
@@ -196,10 +200,10 @@ end
 
     # Check EWC confidence interval
     ci1 = confint(f1)
-    @test ci1[1][1] ≈ -0.8571544691033884 atol=1e-8
-    @test ci1[2][1] ≈ 0.3850826992477342 atol=1e-8
-    @test ci1[1][10] ≈ 0.020165100998330715 atol=1e-8
-    @test ci1[2][10] ≈ 0.34552900750920656 atol=1e-8
+    @test ci1[1][1] ≈ -0.8830584463829632 atol=1e-8
+    @test ci1[2][1] ≈ 0.4109866765273089 atol=1e-8
+    @test ci1[1][10] ≈ 0.013380390754119786 atol=1e-8
+    @test ci1[2][10] ≈ 0.3523137177534175 atol=1e-8
 
     # Compare results based on DemmlerReinsch and DirectSolve
     gbb = 194.0.*(1:0.5:10)
@@ -246,10 +250,10 @@ end
     @test r4.V ≈ r0.V
     f4 = irf(r4, :yg, :ir)
     ci4 = confint(f4)
-    @test ci4[1][1] ≈ -0.6791444574232643 atol=1e-8
-    @test ci4[2][1] ≈ 0.2070726875676101 atol=1e-8
-    @test ci4[1][10] ≈ -0.06536421920992108 atol=1e-8
-    @test ci4[2][10] ≈ 0.4310583277174584 atol=1e-8
+    @test ci4[1][1] ≈ -0.6976347030646475 atol=1e-8
+    @test ci4[2][1] ≈ 0.22556293320899323 atol=1e-8
+    @test ci4[1][10] ≈ -0.07572169749443655 atol=1e-8
+    @test ci4[2][10] ≈ 0.44141580600197383 atol=1e-8
 
     r5 = lp(r1, 194.0, vce=HRVCE())
     @test r5.B ≈ r1.B
@@ -287,9 +291,9 @@ end
     @test coef(f1)[1] ≈ 0.6969380791400279 atol=1e-8
     @test coef(f1)[9] ≈ 0.8444504165548141 atol=1e-8
     @test coef(f1)[17] ≈ 0.7343077490303411 atol=1e-8
-    @test stderror(f1)[1] ≈ 0.46635397544693047 atol=1e-8
-    @test stderror(f1)[9] ≈ 0.08475156240143418 atol=1e-8
-    @test stderror(f1)[17] ≈ 0.12534835370652056 atol=1e-8
+    @test stderror(f1)[1] ≈ 0.4726399483395968 atol=1e-8
+    @test stderror(f1)[9] ≈ 0.0858939264679245 atol=1e-8
+    @test stderror(f1)[17] ≈ 0.1270379208490072 atol=1e-8
 
     r2 = lp(est, df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g),
         iv=Cum(:g)=>(:newsy, :g), nlag=4, nhorz=16, minhorz=1, addylag=false,
@@ -299,9 +303,9 @@ end
     @test coef(f2)[1] ≈ -0.178375389687782 atol=1e-8
     @test coef(f2)[8] ≈ 0.2573602225267132 atol=1e-8
     @test coef(f2)[16] ≈ 0.23087128211782626 atol=1e-8
-    @test stderror(f2)[1] ≈ 0.09017317177271794 atol=1e-8
-    @test stderror(f2)[8] ≈ 0.03145777721639394 atol=1e-8
-    @test stderror(f2)[16] ≈ 0.06985430057347854 atol=1e-8
+    @test stderror(f2)[1] ≈ 0.09138628413910047 atol=1e-8
+    @test stderror(f2)[8] ≈ 0.03188098311909736 atol=1e-8
+    @test stderror(f2)[16] ≈ 0.07079406030695458 atol=1e-8
 
     @test sprint(show, MIME("text/plain"), r2) == """
         LocalProjectionResult with 4 lags over 16 horizons:

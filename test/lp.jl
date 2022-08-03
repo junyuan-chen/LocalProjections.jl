@@ -177,6 +177,11 @@ end
     @test riv.F_kp ≈ rfe.F_kp atol=1e-8
     @test riv.p_kp ≈ rfe.p_kp atol=1e-8
 
+    riv = lp(df, :ebp, xnames=:ff, wnames=(:ff4_tc,), nlag=12, nhorz=2,
+        iv=:ff=>:ff4_tc, vce=HRVCE(), testweakiv=false)
+    @test riv.F_kp === nothing
+    @test riv.p_kp === nothing
+
     # Make sure that panel results with a single unit remain the same
     r1 = lp(df, :ebp, xnames=:ff4_tc, wnames=(:ff4_tc,), nlag=12, nhorz=2,
         normalize=:ff4_tc=>:ff, panelid=:gid, panelweight=:wt, vce=HRVCE())

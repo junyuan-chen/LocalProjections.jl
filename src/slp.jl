@@ -490,7 +490,7 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, fes, clus, pw, nlag,
         "cluster-robust VCE is not supported for smoothed local projection"))
     ix_sm = _getcols!(est, data, xnames)
     ix_nsm = setdiff(1:length(xs), ix_sm)
-    nx = sum(ix_nsm) + length(ws)*nlag
+    nx = length(ix_nsm) + length(ws)*nlag
     YSr = Vector{Matrix{TF}}(undef, nhorz)
     Xs = Vector{Matrix{TF}}(undef, nhorz)
     T = Vector{Int}(undef, nhorz)
@@ -561,7 +561,7 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, fes, clus, pw, nlag,
     end
     B = permutedims(reshape(bm*reshape(θ,nb,ns), nhorz, ns, 1), (2,3,1))
     m = Ridge(y, C, P, Cy, invCCP, crossy, crossC, est.fullX ? Xs : nothing, λ, θ, resid,
-        getscore(C, resid), dof_res, nx)
+        getscore(C, resid), dof_res, nx*nhorz)
     bms = repeat(bm, 1, ns)
     Σ = vcov(m, vce)
     Vfull = bms * Σ * bms'

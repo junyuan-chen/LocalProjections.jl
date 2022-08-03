@@ -229,7 +229,7 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
     i1 = 1
     for ids in dt.groups
         Nid = length(ids)
-        step = Nid-dt.nlag-horz-1
+        step = Nid - dt.nlag - horz - 1
         r2 = r1 + step
         i2 = i1 + step
         # Indicators for valid observations within the T rows
@@ -256,7 +256,7 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
         k1 = 1
         for ids in dt.groups
             Nid = length(ids)
-            step = Nid-dt.nlag-horz-1
+            step = Nid - dt.nlag - horz - 1
             i2 = i1 + step
             for i in i1:i2
                 if esampleT[k1]
@@ -369,7 +369,7 @@ function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::BitVector, horz, yfs::Vec
         k1 = 1
         for ids in dt.groups
             Nid = length(ids)
-            step = Nid-dt.nlag-horz-1
+            step = Nid - dt.nlag - horz - 1
             i2 = i1 + step
             gyf = view(yf, ids)
             src = view(gyf, dt.nlag+1:length(gyf)-horz)
