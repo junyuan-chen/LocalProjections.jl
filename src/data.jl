@@ -348,4 +348,39 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
     return Y, X, CLU, W, T, esampleT, doffe
 end
 
+# Xendo is needed for computing residuals from 2SLS
+function _makeXendo(dt::LPData{TF,Nothing}, esampleT::BitVector, horz, yfs::Vector) where TF
+    nyfs = length(yfs)
+    Xendo = Matrix{TF}(undef, sum(esampleT), nyfs)
+    @inbounds for j in 1:nyfs
+        yf = vec(yfs[j], dt.subset, :x, horz, TF)
+        src = view(yf, dt.nlag+1:length(yf)-horz)
+        copyto!(view(Xendo,:,j), view(src, esampleT))
+    end
+    return Xendo
+end
+
+function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::BitVector, horz, yfs::Vector) where TF
+    nyfs = length(yfs)
+    Xendo = Matrix{TF}(undef, sum(esampleT), nyfs)
+    @inbounds for j in 1:nyfs
+        yf = vec(yfs[j], dt.subset, :x, horz, TF)
+        i1 = 1
+        k1 = 1
+        for ids in dt.groups
+            Nid = length(ids)
+            step = Nid-dt.nlag-horz-1
+            i2 = i1 + step
+            gyf = view(yf, ids)
+            src = view(gyf, dt.nlag+1:length(gyf)-horz)
+            gesampleT = view(esampleT, i1:i2)
+            k2 = k1 + sum(gesampleT) - 1
+            copyto!(view(Xendo,k1:k2,j), view(src, gesampleT))
+            i1 = i2 + 1
+            k1 = k2 + 1
+        end
+    end
+    return Xendo
+end
+
 show(io::IO, ::LPData) = print(io, "Data for local projection")

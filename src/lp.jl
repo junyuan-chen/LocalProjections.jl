@@ -24,6 +24,19 @@ function OLS(Y::AbstractVecOrMat, X::AbstractMatrix, dofr::Int, doftstat::Int=do
     return OLS(X, invXX, coef, resid, score, max(1,dofr), max(1,doftstat))
 end
 
+# Handle the residuals for 2SLS
+function TSLS(Y::AbstractVecOrMat, Xhat::AbstractMatrix, X::AbstractMatrix,
+        dofr::Int, doftstat::Int=dofr)
+    Xhat = convert(Matrix, Xhat)
+    crossx = cholesky!(Xhat'Xhat)
+    coef = Xhat'Y
+    ldiv!(crossx, coef)
+    invXX = inv!(crossx)
+    resid = mul!(Y, X, coef, -1.0, 1.0)
+    score = getscore(Xhat, resid)
+    return OLS(Xhat, invXX, coef, resid, score, max(1,dofr), max(1,doftstat))
+end
+
 modelmatrix(m::OLS) = m.X
 coef(m::OLS) = m.coef
 residuals(m::OLS) = m.resid
@@ -257,19 +270,45 @@ function _getcols(data, ynames, xnames, wnames, states, fes, clunames, panelid, 
         ys, xs, ws, sts, fes, clus, pw, groups
 end
 
-function _lp(dt::LPData, horz::Int, vce)
+function _lp(dt::LPData, horz::Int, vce, yfs::Nothing, ix_iv)
     Y, X, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
     dofr = T - size(X,2) - doffe
     m = OLS(Y, X, dofr)
     return coef(m), vcov(m, vce), T, m
 end
 
-function _lp(dt::LPData, horz::Int, vce::ClusterCovariance)
+function _lp(dt::LPData, horz::Int, vce, yfs::Vector, ix_iv)
+    Y, Xhat, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
+    Xendo = _makeXendo(dt, esampleT, horz, yfs)
+    X = similar(Xhat)
+    copyto!(view(X,:,ix_iv), Xendo)
+    iexo = setdiff(1:size(X,2), ix_iv)
+    copyto!(view(X,:,iexo), view(Xhat,:,iexo))
+    dofr = T - size(X,2) - doffe
+    m = TSLS(Y, Xhat, X, dofr)
+    return coef(m), vcov(m, vce), T, m
+end
+
+function _lp(dt::LPData, horz::Int, vce::ClusterCovariance, yfs::Nothing, ix_iv)
     Y, X, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
     vce = cluster(names(vce), (CLU...,))
     dofr = T - size(X,2) - doffe
     doftstat = minimum(nclusters(vce)) - 1
     m = OLS(Y, X, dofr, doftstat)
+    return coef(m), vcov(m, vce), T, m
+end
+
+function _lp(dt::LPData, horz::Int, vce::ClusterCovariance, yfs::Vector, ix_iv)
+    Y, Xhat, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
+    Xendo = _makeXendo(dt, esampleT, horz, yfs)
+    X = similar(Xhat)
+    copyto!(view(X,:,ix_iv), Xendo)
+    iexo = setdiff(1:size(X,2), ix_iv)
+    copyto!(view(X,:,iexo), view(Xhat,:,iexo))
+    vce = cluster(names(vce), (CLU...,))
+    dofr = T - size(X,2) - doffe
+    doftstat = minimum(nclusters(vce)) - 1
+    m = TSLS(Y, Xhat, X, dofr, doftstat)
     return coef(m), vcov(m, vce), T, m
 end
 
@@ -287,7 +326,7 @@ function _normalize!(data, normalize, xnames, xs, ws, sts, fes, pw, nlag, minhor
     yn = Any[getcolumn(data, n) for n in nnames]
     # Data on clusters are not needed
     dt = LPData(yn, xs, ws, sts, fes, Any[], pw, nlag, minhorz, subset, groups, TF)
-    Bn, Vn, Tn, _ = _lp(dt, minhorz, nothing)
+    Bn, Vn, Tn, _ = _lp(dt, minhorz, nothing, nothing, nothing)
     normmults = TF[Bn[ix,i] for (i,ix) in enumerate(ix_s)]
     xs[ix_s] .*= normmults
     normnames = VarName[_toname(data, n) for n in snames]
@@ -427,7 +466,7 @@ function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, sts, fes, clus, pw,
         elseif any(x->x isa Cum, xs)
             dt = LPData(ys, xs, ws, sts, fes, clus, pw, nlag, h, subset, groups, TF)
         end
-        Bh, Vh, T[i], M[i] = _lp(dt, h, vce)
+        Bh, Vh, T[i], M[i] = _lp(dt, h, vce, yfs, ix_iv)
         B[:,:,i] = reshape(Bh, nr, ny, 1)
         V[:,:,i] = reshape(Vh, nr*ny, nr*ny, 1)
     end
@@ -451,7 +490,7 @@ The input `data` must be `Tables.jl`-compatible.
 - `normalize::Union{VarIndexPair,Vector{VarIndexPair},Nothing}=nothing`: normalize the magnitude of the specified regressor(s) based on their initial impact on the respective targeted outcome variable.
 - `iv::Union{Pair,Nothing}=nothing`: endogenous varable(s) paired with instrument(s).
 - `firststagebyhorz::Bool=false`: estimate the first-stage regression separately for each horizon.
-- `testweakiv::Bool=true`: compute Kleibergen-Paap first-stage F-statistic.
+- `testweakiv::Bool=true`: compute Kleibergen-Paap rk statistic for weak IV.
 - `states=nothing`: variable(s) representing the states for a state-dependent specification.
 - `panelid::Union{Symbol,Integer,Nothing}=nothing`: variable identifying the units in a panel.
 - `fes=()`: variable(s) identifying the fixed effects.
@@ -567,6 +606,12 @@ function _varinfo(r::LocalProjectionResult, halfwidth::Int)
             join(r.endonames, " "),
             "Instrument"*(length(r.ivnames) > 1 ? "s" : "") =>
             join(r.ivnames, " "))
+        if r.F_kp !== nothing
+            F_kp = r.F_kp isa Vector ? r.F_kp[1] : r.F_kp
+            p_kp = r.p_kp isa Vector ? r.p_kp[1] : r.p_kp
+            push!(info, "Kleibergen-Paap rk" =>
+                sprint(show, TestStat(F_kp))*" ["*sprint(show, PValue(p_kp))*"]")
+        end
     end
     isempty(r.stnames) || push!(info, "States" => join(r.stnames, " "))
     return info

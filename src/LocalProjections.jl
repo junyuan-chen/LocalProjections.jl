@@ -7,7 +7,7 @@ using FixedEffectModels: AbstractFixedEffectSolver, Combination, FixedEffect,
 using GroupedArrays: GroupedArray
 using LinearAlgebra: I, Symmetric, cholesky!, svd!, ldiv!, inv!, mul!
 using StatsAPI: RegressionModel, StatisticalModel
-using StatsBase: CovarianceEstimator, CoefTable, TestStat,
+using StatsBase: CovarianceEstimator, CoefTable, TestStat, PValue,
     AbstractWeights, Weights, UnitWeights, uweights
 using StatsFuns: tdistccdf, tdistinvccdf, chisqccdf
 using Tables

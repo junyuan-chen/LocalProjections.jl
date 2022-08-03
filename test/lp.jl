@@ -57,7 +57,7 @@ end
         Outcome variable:                   y    Minimum horizon:                    0
         Regressor:                               Lagged control:                     w
         ──────────────────────────────────────────────────────────────────────────────"""
-    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[Cum(:y)], VarName[Cum(:x)], VarName[:w], VarName[:rec, :exp], VarName[], Dict{VarName,Int}(Cum(:y)=>1), Dict{VarName,Int}(Cum(:x)=>1), Dict{VarName,Int}(:w=>1), :pid, nothing, 1, 0, nothing, nothing, nothing, nothing, VarName[Cum(:x)], VarName[:z1,:z2], false, 0.1, 0.2, true)
+    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[Cum(:y)], VarName[Cum(:x)], VarName[:w], VarName[:rec, :exp], VarName[], Dict{VarName,Int}(Cum(:y)=>1), Dict{VarName,Int}(Cum(:x)=>1), Dict{VarName,Int}(:w=>1), :pid, nothing, 1, 0, nothing, nothing, nothing, nothing, VarName[Cum(:x)], VarName[:z1,:z2], false, [0.12345678], 0.22345678, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 1 lag over 1 horizon:
         ──────────────────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ end
         Outcome variable:              Cum(y)    Minimum horizon:                    0
         Regressor:                     Cum(x)    Lagged control:                     w
         Endogenous variable:           Cum(x)    Instruments:                    z1 z2
-        States:                       rec exp    
+        Kleibergen-Paap rk:     0.12 [0.2235]    States:                       rec exp
         ──────────────────────────────────────────────────────────────────────────────
         Panel Specifications
         ──────────────────────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ end
     xs = Any[randn(T), randn(T)]
     ws = ys
     dt = LPData(ys, xs, ws, nothing, Any[], Any[], nothing, 3, 0, nothing, nothing)
-    b, v, t, m = _lp(dt, 5, SimpleVCE())
+    b, v, t, m = _lp(dt, 5, SimpleVCE(), nothing, nothing)
     @test size(b) == (8, 2)
     @test size(v) == (16, 16)
     @test t == 92
@@ -140,7 +140,7 @@ end
     @test stderror(f)[20] ≈ 1.005046789996172 atol=1e-8
     ci = confint(f)
     @test ci[1][1] ≈ -0.3885764241953698 atol=1e-8
-    @test ci[2][1] ≈ 1.1775653499255412 atol=1e-8
+    @test ci[2][1] ≈ 1.1775653499255412 atol=1e-7
     @test ci[1][20] ≈ -2.2146531911738387 atol=1e-8
     @test ci[2][20] ≈ 1.1089543828008497 atol=1e-8
 
@@ -155,15 +155,13 @@ end
         iv=:ff=>:ff4_tc, vce=HRVCE())
     @test coef(rn, 1, :ff4_tc) ≈ coef(riv, 1, :ff)
     @test coef(rn, 2, :ff4_tc) ≈ coef(riv, 2, :ff)
-    @test vcov(rn, 1, :ff4_tc) ≈ vcov(riv, 1, :ff)
-    @test vcov(rn, 2, :ff4_tc) ≈ vcov(riv, 2, :ff)
     @test rn.normnames == [:ff4_tc]
     @test rn.normtars == [:ff]
     @test rn.normmults ≈ [-5.3028242533068495] atol=1e-8
     @test riv.endonames == VarName[:ff]
     @test riv.ivnames == VarName[:ff4_tc]
 
-    # Construct lags for comparing KP statistics with FixedEffectModels.jl
+    # Construct lags for comparing results with FixedEffectModels.jl
     for var in (:ebp, :ff4_tc)
         for l in 1:12
             df[!,Symbol(:l,l,var)] = vcat(fill(NaN, l), df[1:end-l, var])
@@ -171,8 +169,11 @@ end
     end
     lebps = ntuple(i->term(Symbol(:l,i,:ebp)), 12)
     lff4_tc = ntuple(i->term(Symbol(:l,i,:ff4_tc)), 12)
-    rfe = reg(df, term(:ebp)~(term(:ff)~term(:ff4_tc))+lebps+lff4_tc, Vcov.robust());
-    @test coef(rfe)[end] ≈ coef(riv, 1, :ff) atol=1e-8
+    # This avoids issues on older versions of StatsModels.jl
+    rhs = (term(:ff)~term(:ff4_tc), lebps..., lff4_tc...)
+    rfe = reg(df, term(:ebp)~rhs, Vcov.robust())
+    @test coef(riv, 1, :ff) ≈ coef(rfe)[end] atol=1e-8
+    @test vcov(riv, 1, :ff) ≈ vcov(rfe)[end] atol=1e-8
     @test riv.F_kp ≈ rfe.F_kp atol=1e-8
     @test riv.p_kp ≈ rfe.p_kp atol=1e-8
 
@@ -220,15 +221,16 @@ end
     @test coef(f1)[9] ≈ .6689611146745 atol=1e-9
     @test coef(f1)[17] ≈ .7096110638625 atol=1e-9
     # Standard errors based on EWC rather than Newey-West in original paper
-    @test stderror(f1)[1] ≈ 0.4286854811143802 atol=1e-8
-    @test stderror(f1)[9] ≈ 0.10921291172237432 atol=1e-8
-    @test stderror(f1)[17] ≈ 0.20049776900175723 atol=1e-8
+    @test stderror(f1)[1] ≈ 0.37439346775796917 atol=1e-8
+    @test stderror(f1)[9] ≈ 0.05917848282306491 atol=1e-8
+    @test stderror(f1)[17] ≈ 0.04441907325684153 atol=1e-8
 
-    # Construct lags for comparing KP statistics with FixedEffectModels.jl
+    # Construct lags for comparing results with FixedEffectModels.jl
     # For rank test, heteroskedasticity-robust VCE is used even with vce=HARVCE(EWC())
     r1_0 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
         nlag=4, nhorz=1, addylag=false, firststagebyhorz=true, vce=HARVCE(EWC()))
-    f1_0 = irf(r1_0, Cum(:y), Cum(:g))
+    r1_1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
+        nlag=4, nhorz=1, addylag=false, firststagebyhorz=true, vce=HRVCE())
     for var in (:newsy, :y, :g)
         for l in 1:4
             df[!,Symbol(:l,l,var)] = vcat(fill(NaN, l), df[1:end-l, var])
@@ -237,8 +239,11 @@ end
     lnewsys = ntuple(i->term(Symbol(:l,i,:newsy)), 4)
     lys = ntuple(i->term(Symbol(:l,i,:y)), 4)
     lgs = ntuple(i->term(Symbol(:l,i,:g)), 4)
-    rfe = reg(df, term(:y)~(term(:g)~term(:newsy))+lnewsys+lys+lgs, Vcov.robust());
-    @test coef(rfe)[end] ≈ coef(r1_0, 1, Cum(:g)) atol=1e-8
+    rhs = (term(:g)~term(:newsy), lnewsys..., lys..., lgs...)
+    rfe = reg(df, term(:y)~rhs, Vcov.robust())
+    @test coef(r1_0, 1, Cum(:g)) ≈ coef(rfe)[end] atol=1e-8
+    @test coef(r1_1, 1, Cum(:g)) ≈ coef(rfe)[end] atol=1e-8
+    @test vcov(r1_1, 1, Cum(:g)) ≈ vcov(rfe)[end] atol=1e-8
     @test r1_0.F_kp[1] ≈ rfe.F_kp atol=1e-8
     @test r1_0.p_kp[1] ≈ rfe.p_kp atol=1e-8
 
@@ -249,9 +254,9 @@ end
     @test coef(f2)[8] ≈ .4509452247638 atol=1e-9
     @test coef(f2)[16] ≈ .5591002357465 atol=1e-9
     # Standard errors based on EWC rather than Newey-West in original paper
-    @test stderror(f2)[1] ≈ 0.16423131478595118 atol=1e-8
-    @test stderror(f2)[8] ≈ 0.10754779358937377 atol=1e-8
-    @test stderror(f2)[16] ≈ 0.14263798115850218 atol=1e-8
+    @test stderror(f2)[1] ≈ 0.15265027120755809 atol=1e-8
+    @test stderror(f2)[8] ≈ 0.0813792791970263 atol=1e-8
+    @test stderror(f2)[16] ≈ 0.08518024610628232 atol=1e-8
 
     # Omit WWII
     r1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
@@ -360,10 +365,11 @@ end
         end
     end
 
-    rfe = reg(df, term(:dlgrgdp)~(term.(lws)...,)+fe(:iso), cluster(:iso));
+    rhs = (term.(lws)..., fe(:iso))
+    rfe = reg(df, term(:dlgrgdp)~rhs, cluster(:iso));
     @test f1.B[1] ≈ coef(rfe)[1] atol=1e-8
     @test stderror(f1)[1] ≈ stderror(rfe)[1] atol=1e-8
-    @test dof_tstat(r1)[1] == rfe.dof_residual
+    @test dof_tstat(r1)[1] == 17
     f1ci = confint(f1, level=0.95)
     @test f1ci[1][1] ≈ confint(rfe)[1,1] atol=1e-8
     @test f1ci[2][1] ≈ confint(rfe)[1,2] atol=1e-8
@@ -373,11 +379,13 @@ end
     f = x->lag(x, -2, default=1.0)
     transform!(groupby(df,:iso), :dlgrgdp=>f=>:f2dlgrgdp)
 
-    rfe = reg(df, term(:f2dlgrgdp)~(term(:dlgrgdp)~term(:dlgcpi))+(term.(lws)...,)+fe(:iso), cluster(:iso))
+    rhs = (term(:dlgrgdp)~term(:dlgcpi), term.(lws)..., fe(:iso))
+    rfe = reg(df, term(:f2dlgrgdp)~rhs, cluster(:iso))
     r2 = lp(df, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws, nlag=3, nhorz=1,
         iv=:dlgrgdp=>:dlgcpi, panelid=:iso, vce=cluster(:iso), addylag=false)
     f2 = irf(r2, :f2dlgrgdp, :dlgrgdp)
-    @test coef(rfe)[end] ≈ coef(r2, 1, :dlgrgdp) atol=1e-8
+    @test coef(r2, 1, :dlgrgdp) ≈ coef(rfe)[end] atol=1e-8
+    @test stderror(f2)[1] ≈ stderror(rfe)[end] atol=1e-8
     @test r2.F_kp[1] ≈ rfe.F_kp atol=1e-8
     @test r2.p_kp[1] ≈ rfe.p_kp atol=1e-8
     @test dof_residual(r2)[1] == 2409

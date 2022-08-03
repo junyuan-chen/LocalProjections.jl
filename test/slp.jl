@@ -311,6 +311,7 @@ end
         Outcome variable:              Cum(y)    Minimum horizon:                    1
         Regressors:           Cum(g) constant    Lagged controls:            newsy y g
         Endogenous variable:           Cum(g)    Instruments:                  newsy g
+        Kleibergen-Paap rk:   126.03 [<1e-54]    
         ──────────────────────────────────────────────────────────────────────────────
         Smooth Local Projection
         ──────────────────────────────────────────────────────────────────────────────
