@@ -9,6 +9,7 @@ FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 FixedEffectModels = "9d5cd8c9-2029-5cab-9928-427838db53e3"
 GroupedArrays = "6407cd72-fade-4a84-8a1e-56e431fc1533"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 StatsAPI = "82ae8749-77ed-4fe6-ae5f-f523153014b0"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 StatsFuns = "4c63d2b9-4356-54db-8cca-17b64c39e42c"
@@ -17,12 +18,13 @@ Vcov = "ec2bfdc2-55df-4fc9-b9ae-4958c2cf2486"
 
 [compat]
 BSplines = "0.3"
-CSV = "0.8, 0.9, 0.10"
-CodecZlib = "0.6, 0.7"
+CSV = "0.9, 0.10"
+CovarianceMatrices = "0.10"
 DataFrames = "1"
 FFTW = "1"
 FixedEffectModels = "1.6"
 GroupedArrays = "0.3"
+Requires = "1"
 ShiftedArrays = "1"
 StatsAPI = "1.2"
 StatsBase = "0.33"
@@ -33,10 +35,10 @@ julia = "1.3"
 
 [extras]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
-CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
+CovarianceMatrices = "60f91f6f-d783-54cb-84f9-544141854719"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 ShiftedArrays = "1277b4bf-5013-50f5-be3d-901d8477a67a"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["CSV", "CodecZlib", "DataFrames", "ShiftedArrays", "Test"]
+test = ["CSV", "CovarianceMatrices", "DataFrames", "ShiftedArrays", "Test"]

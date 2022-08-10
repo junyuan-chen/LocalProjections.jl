@@ -349,7 +349,7 @@ function _fillfitted(fitted, groups::Vector, nY, nlag, Tfull, horz, esampleT, Xb
         n1 = 1
         for ids in groups
             Nid = length(ids)
-            step = Nid-nlag-horz-1
+            step = Nid - nlag - horz - 1
             i2 = i1 + step
             gesampleT = view(esampleT, i1:i2)
             n2 = n1 + sum(gesampleT) - 1

@@ -2,7 +2,7 @@ using Test
 using LocalProjections
 
 using CSV
-using CodecZlib: GzipDecompressorStream
+using CovarianceMatrices
 using DataFrames
 using FixedEffectModels
 using LinearAlgebra: I
@@ -12,11 +12,9 @@ using LocalProjections: kron_fastl, kron_fastr, getscore, _geto,
 using ShiftedArrays
 using Tables: getcolumn
 
-function exampledata(name::Union{Symbol,String})
-    # Need to allow CSV v0.8 to work
-    f = open(datafile(name)) |> GzipDecompressorStream |> read |> CSV.File
-    return DataFrame(f, copycols=true)
-end
+exampledata(name::Union{Symbol,String}) = CSV.read(datafile(name), DataFrame)
+
+const NeweyWest94 = CovarianceMatrices.ParzenKernel{CovarianceMatrices.NeweyWest}
 
 const tests = [
     "utils",

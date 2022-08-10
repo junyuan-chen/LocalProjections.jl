@@ -230,6 +230,13 @@ end
     @test stderror(f1)[9] ≈ 0.05917848282306491 atol=1e-8
     @test stderror(f1)[17] ≈ 0.04441907325684153 atol=1e-8
 
+    # Try Newey-West standard errors from CovarianceMatrices.jl
+    r1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
+        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, vce=NeweyWest94())
+    f1 = irf(r1, Cum(:y), Cum(:g))
+    @test stderror(f1)[9] ≈ 0.06207907472277425 atol=1e-8
+    @test stderror(f1)[17] ≈ 0.043723073565539526 atol=1e-8
+
     # Construct lags for comparing results with FixedEffectModels.jl
     # For rank test, heteroskedasticity-robust VCE is used even with vce=HARVCE(EWC())
     r1_0 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
