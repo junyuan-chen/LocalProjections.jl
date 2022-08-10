@@ -36,6 +36,18 @@ function rz()
     df.rgov = df.ngov./df.pgdp
     df.y = df.rgdp./ynorm
     df.g = df.rgov./ynorm
+    # Add variables needed for state dependent results
+    # Construct the lag of slack
+    df.rec = similar(df.slack)
+    df.rec[1] = missing
+    # Fill the beginning missing values
+    df.rec[2:5] .= true
+    df.rec[6:end] .= view(df.slack, 5:length(df.rec)-1)
+    df.exp = 1.0 .- df.rec
+    df.recnewsy = df.rec.*df.newsy
+    df.expnewsy = df.exp.*df.newsy
+    df.recg = df.rec.*df.g
+    df.expg = df.exp.*df.g
     open(GzipCompressorStream, "data/rz.csv.gz", "w") do stream
         CSV.write(stream, df)
     end

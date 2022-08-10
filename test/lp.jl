@@ -296,18 +296,6 @@ end
     # Compare estimates generated from `jordagk_twoinstruments.do`
     # Use `bro multexpbh* multrecbh*` to see the Stata results
 
-    # Construct the lag of slack
-    df.rec = similar(df.slack)
-    df.rec[1] = missing
-    # Fill the beginning missing values
-    df.rec[2:5] .= true
-    df.rec[6:end] .= view(df.slack, 5:length(df.rec)-1)
-    df.exp = 1.0 .- df.rec
-    df.recnewsy = df.rec.*df.newsy
-    df.expnewsy = df.exp.*df.newsy
-    df.recg = df.rec.*df.g
-    df.expg = df.exp.*df.g
-
     # nomit
     r2 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
         iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
