@@ -563,7 +563,7 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, sts, fes, clus, pw, nlag,
     m = Ridge(y, C, P, Cy, invCCP, crossy, crossC, est.fullX ? Xs : nothing, λ, θ, resid,
         getscore(C, resid), dof_res, nx*nhorz)
     bms = repeat(bm, 1, ns)
-    Σ = vcov(m, vce)
+    Σ = convert(Matrix, vcov(m, vce))
     Vfull = bms * Σ * bms'
     V = Array{TF,3}(undef, ns, ns, nhorz)
     inds = [nhorz*(n-1) for n in 1:ns]

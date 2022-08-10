@@ -295,6 +295,14 @@ end
     @test stderror(f1)[9] ≈ 0.0858939264679245 atol=1e-8
     @test stderror(f1)[17] ≈ 0.1270379208490072 atol=1e-8
 
+    # Try Newey-West standard errors from CovarianceMatrices.jl
+    r1 = lp(est, df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
+        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, subset=df.wwii.==0,
+        vce=NeweyWest94())
+    f1 = irf(r1, Cum(:y), Cum(:g))
+    @test stderror(f1)[9] ≈ 0.08694010697048188 atol=1e-8
+    @test stderror(f1)[17] ≈ 0.13627053333187472 atol=1e-8
+
     r2 = lp(est, df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g),
         iv=Cum(:g)=>(:newsy, :g), nlag=4, nhorz=16, minhorz=1, addylag=false,
         firststagebyhorz=true, subset=df.wwii.==0, vce=HARVCE(EWC()))

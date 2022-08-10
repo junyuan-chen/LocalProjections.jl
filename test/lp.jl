@@ -230,6 +230,13 @@ end
     @test stderror(f1)[9] ≈ 0.05917848282306491 atol=1e-8
     @test stderror(f1)[17] ≈ 0.04441907325684153 atol=1e-8
 
+    # Try Newey-West standard errors from CovarianceMatrices.jl
+    r1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
+        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, vce=NeweyWest94())
+    f1 = irf(r1, Cum(:y), Cum(:g))
+    @test stderror(f1)[9] ≈ 0.06207907472277425 atol=1e-8
+    @test stderror(f1)[17] ≈ 0.043723073565539526 atol=1e-8
+
     # Construct lags for comparing results with FixedEffectModels.jl
     # For rank test, heteroskedasticity-robust VCE is used even with vce=HARVCE(EWC())
     r1_0 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
@@ -288,18 +295,6 @@ end
     # State dependency
     # Compare estimates generated from `jordagk_twoinstruments.do`
     # Use `bro multexpbh* multrecbh*` to see the Stata results
-
-    # Construct the lag of slack
-    df.rec = similar(df.slack)
-    df.rec[1] = missing
-    # Fill the beginning missing values
-    df.rec[2:5] .= true
-    df.rec[6:end] .= view(df.slack, 5:length(df.rec)-1)
-    df.exp = 1.0 .- df.rec
-    df.recnewsy = df.rec.*df.newsy
-    df.expnewsy = df.exp.*df.newsy
-    df.recg = df.rec.*df.g
-    df.expg = df.exp.*df.g
 
     # nomit
     r2 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),

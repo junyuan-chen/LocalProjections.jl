@@ -6,6 +6,7 @@ using FixedEffectModels: AbstractFixedEffectSolver, Combination, FixedEffect,
     solve_residuals!, isnested, nunique
 using GroupedArrays: GroupedArray
 using LinearAlgebra: I, Symmetric, cholesky!, svd!, ldiv!, inv!, mul!
+using Requires
 using StatsAPI: RegressionModel, StatisticalModel
 using StatsBase: CovarianceEstimator, CoefTable, TestStat, PValue,
     AbstractWeights, Weights, UnitWeights, uweights
@@ -73,5 +74,18 @@ include("lp.jl")
 include("slp.jl")
 include("vce.jl")
 include("irf.jl")
+
+function __init__()
+    @require CovarianceMatrices = "60f91f6f-d783-54cb-84f9-544141854719" begin
+        function vcov(m::OLS, vce::CovarianceMatrices.RobustVariance)
+            dof = size(m.X,1) - dof_residual(m)
+            return CovarianceMatrices.sandwich(vce, m.invXX, m.score, dof=dof)
+        end
+        function vcov(m::Ridge, vce::CovarianceMatrices.RobustVariance)
+            dof = size(m.C,1) - dof_residual(m)
+            return CovarianceMatrices.sandwich(vce, m.invCCP, m.score, dof=dof)
+        end
+    end
+end
 
 end # module
