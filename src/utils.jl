@@ -277,13 +277,30 @@ function _group(col::AbstractVector)
     return inds
 end
 
+# A work around for the type restrictions in FixedEffects.jl
+function _solve_residuals!(Y::AbstractVecOrMat, X::AbstractMatrix,
+        feM::AbstractFixedEffectSolver; progress_bar=false, kwargs...)
+    iterations = Int[]
+    convergeds = Bool[]
+    for j in axes(Y, 2)
+        _, iteration, converged = solve_residuals!(view(Y,:,j), feM; kwargs...)
+        push!(iterations, iteration)
+        push!(convergeds, converged)
+    end
+    for j in axes(X, 2)
+        _, iteration, converged = solve_residuals!(view(X,:,j), feM; kwargs...)
+        push!(iterations, iteration)
+        push!(convergeds, converged)
+    end
+    return iterations, convergeds
+end
+
 # Residualize columns in Y and X with weights W for fixed effects FE
 function _feresiduals!(Y::AbstractVecOrMat, X::AbstractMatrix, FE::Vector{FixedEffect},
         W::AbstractWeights; nfethreads::Int=Threads.nthreads(),
         fetol::Real=1e-8, femaxiter::Int=10000)
     feM = AbstractFixedEffectSolver{Float64}(FE, W, Val{:cpu}, nfethreads)
-    M = Combination(Y, X)
-    _, iters, convs = solve_residuals!(M, feM;
+    iters, convs = _solve_residuals!(Y, X, feM;
         tol=fetol, maxiter=femaxiter, progress_bar=false)
     iter = maximum(iters)
     conv = all(convs)

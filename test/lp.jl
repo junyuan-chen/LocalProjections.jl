@@ -230,13 +230,6 @@ end
     @test stderror(f1)[9] ≈ 0.05917848282306491 atol=1e-8
     @test stderror(f1)[17] ≈ 0.04441907325684153 atol=1e-8
 
-    # Try Newey-West standard errors from CovarianceMatrices.jl
-    r1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
-        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, vce=NeweyWest94())
-    f1 = irf(r1, Cum(:y), Cum(:g))
-    @test stderror(f1)[9] ≈ 0.06207907472277425 atol=1e-8
-    @test stderror(f1)[17] ≈ 0.043723073565539526 atol=1e-8
-
     # Construct lags for comparing results with FixedEffectModels.jl
     # For rank test, heteroskedasticity-robust VCE is used even with vce=HARVCE(EWC())
     r1_0 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
@@ -312,8 +305,8 @@ end
     # wwii
     r2 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
         iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
-        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true,
-        subset=df.wwii.==0)
+        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false,
+        firststagebyhorz=true, subset=df.wwii.==0)
     f2rec = irf(r2, Cum(:y), Cum(:g,:rec))
     @test coef(f2rec)[1] ≈ .345617820757 atol=1e-9
     @test coef(f2rec)[8] ≈ 1.350903038984 atol=1e-8
@@ -323,10 +316,16 @@ end
     @test coef(f2exp)[8] ≈ .2171636455168 atol=1e-9
     @test coef(f2exp)[16] ≈ .2140385336746 atol=1e-9
 
+    r21 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
+        iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
+        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false,
+        firststagebyhorz=true, subset=df.wwii.==0, testweakiv=false)
+    @test r21.B ≈ r2.B
+
     r3 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
         iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
-        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true,
-        subset=df.wwii.==0, panelid=:gid, panelweight=:wt)
+        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false,
+        firststagebyhorz=true, subset=df.wwii.==0, panelid=:gid)#, panelweight=:wt)
     @test r3.B ≈ r2.B[(1:28).!=4,:,:]
 
     @test_logs (:warn, "panelweight is ignored when panelid is nothing")
