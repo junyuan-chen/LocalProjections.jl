@@ -1,7 +1,7 @@
 name = "LocalProjections"
 uuid = "8dd5e8af-b996-4a51-9681-92a36a2638c1"
 authors = ["Junyuan Chen <norman.chen.git@gmail.com>"]
-version = "0.2.0"
+version = "0.2.1"
 
 [deps]
 BSplines = "488c2830-172b-11e9-1591-253b8a7df96d"
