@@ -7,8 +7,8 @@
 [![version][version-img]][version-url]
 [![PkgEval][pkgeval-img]][pkgeval-url]
 
-[CI-stable-img]: https://github.com/junyuan-chen/LocalProjections.jl/workflows/CI-stable/badge.svg
-[CI-stable-url]: https://github.com/junyuan-chen/LocalProjections.jl/actions?query=workflow%3ACI-stable
+[CI-stable-img]: https://github.com/junyuan-chen/LocalProjections.jl/actions/workflows/CI-stable.yml/badge.svg?branch=main
+[CI-stable-url]: https://github.com/junyuan-chen/LocalProjections.jl/actions/workflows/CI-stable.yml
 
 [codecov-img]: https://codecov.io/gh/junyuan-chen/LocalProjections.jl/branch/main/graph/badge.svg
 [codecov-url]: https://codecov.io/gh/junyuan-chen/LocalProjections.jl
@@ -16,8 +16,8 @@
 [version-img]: https://juliahub.com/docs/LocalProjections/version.svg
 [version-url]: https://juliahub.com/ui/Packages/LocalProjections/WJbkE
 
-[pkgeval-img]: https://juliahub.com/docs/LocalProjections/pkgeval.svg
-[pkgeval-url]: https://juliahub.com/ui/Packages/LocalProjections/WJbkE
+[pkgeval-img]: https://juliaci.github.io/NanosoldierReports/pkgeval_badges/L/LocalProjections.svg
+[pkgeval-url]: https://juliaci.github.io/NanosoldierReports/pkgeval_badges/L/LocalProjections.html
 
 [LocalProjections.jl](https://github.com/junyuan-chen/LocalProjections.jl)
 is a Julia package for estimating impulse response functions with local projection methods.
