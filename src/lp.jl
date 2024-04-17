@@ -388,9 +388,14 @@ function _firststage(nendo, niv, ys, xs, ws, sts, fes, clus, pw, nlag::Int, horz
         nX = size(X,2) + nendo - niv
         # Only allow heteroskedasticity-robust or cluster-robust VCE for rank test
         vcerank = vce isa ClusterCovariance ? cluster(names(vce), (CLU...,)) : robust()
-        r_kp = ranktest!(Endores, Zres, Pip, vcerank, nX, doffe)
-        F_kp = r_kp / size(Zres, 2)
-        p_kp = chisqccdf(size(Zres, 2) - size(Endores, 2) + 1, r_kp)
+        try
+            # ranktest! sometimes gives LAPACK errors even though coef estimates seem correct
+            r_kp = ranktest!(Endores, Zres, Pip, vcerank, nX, doffe)
+            F_kp = r_kp / size(Zres, 2)
+            p_kp = chisqccdf(size(Zres, 2) - size(Endores, 2) + 1, r_kp)
+        catch
+            r_kp, F_kp, p_kp = NaN, NaN, NaN
+        end
     else
         F_kp, p_kp = nothing, nothing
     end
@@ -453,14 +458,18 @@ function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, sts, fes, clus, pw,
     if !firststagebyhorz && !any(x->x isa Cum, xs)
         dt = LPData(ys, xs, ws, sts, fes, clus, pw, nlag, minhorz, subset, groups, TF)
     end
-    F_kps = firststagebyhorz ? Vector{Float64}(undef, nhorz) : nothing
-    p_kps = firststagebyhorz ? Vector{Float64}(undef, nhorz) : nothing
+    F_kps = firststagebyhorz && testweakiv ? Vector{Float64}(undef, nhorz) : nothing
+    p_kps = firststagebyhorz && testweakiv ? Vector{Float64}(undef, nhorz) : nothing
     for h in minhorz:minhorz+nhorz-1
         i = h - minhorz + 1
         # Handle cases where all data need to be regenerated for each horizon
         if firststagebyhorz
-            fitted, F_kps[i], p_kps[i] = _firststage(nendo, niv, yfs, xfs,
+            fitted, F_kpsi, p_kpsi = _firststage(nendo, niv, yfs, xfs,
                 ws, sts, fes, clus, pw, nlag, h, subset, groups, testweakiv, vce; TF=TF)
+            if testweakiv
+                F_kps[i] = F_kpsi
+                p_kps[i] = p_kpsi
+            end
             xs[ix_iv] .= fitted
             dt = LPData(ys, xs, ws, sts, fes, clus, pw, nlag, h, subset, groups, TF)
         elseif any(x->x isa Cum, xs)
@@ -555,8 +564,8 @@ function lp(estimator, data, ynames;
         F_kp, p_kp = F_kps, p_kps
     end
 
-    return LocalProjectionResult(B, V, T, estimator, er, vce, ynames, xnames, wnames,
-        stnames, fenames,
+    return LocalProjectionResult(B, V, T, estimator, er, vce,
+        ynames, xnames, wnames, stnames, fenames,
         Dict{VarName,Int}(n=>i for (i,n) in enumerate(ynames)),
         Dict{VarName,Int}(n=>i for (i,n) in enumerate(xnames)),
         Dict{VarName,Int}(n=>i for (i,n) in enumerate(wnames)),
