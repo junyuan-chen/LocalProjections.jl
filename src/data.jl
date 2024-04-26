@@ -636,7 +636,7 @@ function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::BitVector, horz, yfs::Vec
             k1 = k2 + 1
         end
     end
-    _feresiduals!(Xendo, FE, W)
+    isempty(FE) || _feresiduals!(Xendo, FE, W)
     W isa UnitWeights || (Xendo .*= sqrt.(W))
     return Xendo
 end
@@ -659,7 +659,7 @@ function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::Nothing, horz, yfs::Vecto
             i1 = i2 + 1
         end
     end
-    _feresiduals!(Xendo, FE, W)
+    isempty(FE) || _feresiduals!(Xendo, FE, W)
     W isa UnitWeights || (Xendo .*= sqrt.(W))
     return Xendo
 end
