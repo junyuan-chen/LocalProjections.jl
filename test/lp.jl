@@ -29,7 +29,7 @@ end
 @testset "LocalProjectionResult" begin
     B = cat(randn(5,2,1), randn(5,2,1); dims=3)
     V = cat(randn(10,10), randn(10,10); dims=3)
-    r = LocalProjectionResult(B, V, [1,2], LeastSquaresLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], VarName[], VarName[], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), nothing, nothing, 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, nothing, nothing, true)
+    r = LocalProjectionResult(B, V, [1,2], LeastSquaresLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], VarName[], VarName[], VarName[], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), nothing, nothing, 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, nothing, nothing, true)
     @test coef(r, 1, :x) == B[1,1,1]
     @test coef(r, 2, :w1, yname=:y2, lag=1) == B[2,2,2]
     @test coef(r, 2, :w1, lag=2) == B[4,1,2]
@@ -48,7 +48,7 @@ end
         Outcome variables:              y1 y2    Minimum horizon:                    0
         Regressor:                          x    Lagged controls:                w1 w2
         ──────────────────────────────────────────────────────────────────────────────"""
-    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[:y], VarName[], VarName[:w], VarName[], VarName[], Dict{VarName,Int}(:y=>1), Dict{VarName,Int}(), Dict{VarName,Int}(:w=>1), nothing, nothing, 1, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, nothing, nothing, true)
+    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[:y], VarName[], VarName[:w], VarName[], VarName[], VarName[], Dict{VarName,Int}(:y=>1), Dict{VarName,Int}(), Dict{VarName,Int}(:w=>1), nothing, nothing, 1, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, nothing, nothing, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 1 lag over 1 horizon:
         ──────────────────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ end
         Outcome variable:                   y    Minimum horizon:                    0
         Regressor:                               Lagged control:                     w
         ──────────────────────────────────────────────────────────────────────────────"""
-    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[Cum(:y)], VarName[Cum(:x)], VarName[:w], VarName[:rec, :exp], VarName[], Dict{VarName,Int}(Cum(:y)=>1), Dict{VarName,Int}(Cum(:x)=>1), Dict{VarName,Int}(:w=>1), :pid, nothing, 1, 0, nothing, nothing, nothing, nothing, VarName[Cum(:x)], VarName[:z1,:z2], false, [0.12345678], 0.22345678, true)
+    r = LocalProjectionResult(ones(1,1,1), ones(1,1,1), [1], LeastSquaresLP(), nothing, HRVCE(), VarName[Cum(:y)], VarName[Cum(:x)], VarName[:w], VarName[], VarName[:rec, :exp], VarName[], Dict{VarName,Int}(Cum(:y)=>1), Dict{VarName,Int}(Cum(:x)=>1), Dict{VarName,Int}(:w=>1), :pid, nothing, 1, 0, nothing, nothing, nothing, nothing, VarName[Cum(:x)], VarName[:z1,:z2], false, [0.12345678], 0.22345678, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 1 lag over 1 horizon:
         ──────────────────────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ end
         Fixed effects:                 (none)    
         ──────────────────────────────────────────────────────────────────────────────"""
 
-    r = LocalProjectionResult(B, V, [1,2], LeastSquaresLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], VarName[], VarName[:fe1], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), :pid, :wt, 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, nothing, nothing, true)
+    r = LocalProjectionResult(B, V, [1,2], LeastSquaresLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], VarName[], VarName[], VarName[:fe1], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), :pid, :wt, 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, nothing, nothing, true)
     @test sprint(show, MIME("text/plain"), r) == """
         LocalProjectionResult with 2 lags over 2 horizons:
         ──────────────────────────────────────────────────────────────────────────────
@@ -88,6 +88,20 @@ end
         Unit ID:                          pid    Weights:                           wt
         Fixed effects:                    fe1    
         ──────────────────────────────────────────────────────────────────────────────"""
+    r = LocalProjectionResult(B, V, [1,2], LeastSquaresLP(), nothing, HRVCE(), VarName[:y1, :y2], VarName[:x], VarName[:w1, :w2], VarName[:wg1], VarName[], VarName[:fe1], Dict{VarName,Int}(:y1=>1, :y2=>2), Dict{VarName,Int}(:x=>1), Dict{VarName,Int}(:w1=>1,:w2=>2,:y1=>3,:y2=>4), :pid, :wt, 2, 0, nothing, nothing, nothing, nothing, nothing, nothing, false, nothing, nothing, true)
+    @test sprint(show, MIME("text/plain"), r) == """
+        LocalProjectionResult with 2 lags over 2 horizons:
+        ──────────────────────────────────────────────────────────────────────────────
+        Variable Specifications
+        ──────────────────────────────────────────────────────────────────────────────
+        Outcome variables:              y1 y2    Minimum horizon:                    0
+        Regressor:                          x    Lagged controls:            w1 w2 wg1
+        ──────────────────────────────────────────────────────────────────────────────
+        Panel Specifications
+        ──────────────────────────────────────────────────────────────────────────────
+        Unit ID:                          pid    Weights:                           wt
+        Fixed effects:                    fe1    Interacted Lagged control:        wg1
+        ──────────────────────────────────────────────────────────────────────────────"""
 end
 
 @testset "lp" begin
@@ -95,7 +109,7 @@ end
     ys = Any[randn(T), randn(T)]
     xs = Any[randn(T), randn(T)]
     ws = ys
-    dt = LPData(ys, xs, ws, nothing, Any[], Any[], nothing, 3, 0, nothing, nothing)
+    dt = LPData(ys, xs, ws, Any[], nothing, Any[], nothing, Any[], nothing, 3, 0, nothing, nothing, true)
     b, v, t, m = _lp(dt, 5, SimpleVCE(), nothing, nothing)
     @test size(b) == (8, 2)
     @test size(v) == (16, 16)
@@ -128,10 +142,23 @@ end
     r1 = lp(df, :ebp, wnames=ns, nlag=12, nhorz=48, panelid=:gid, panelweight=:wt, vce=HRVCE())
     # Have one fewer coefficient because the constant term is replace by FE
     @test r1.B ≈ r.B[2:61,:,:]
+    # Does not seem to be an issue but ≈ fails for certain horizons
+    @test maximum(abs.(r1.V[:,:,:] .- r.V[2:61,2:61,:])) < 1e-7
     # V is not exactly the same because of the removed intercept
     @test r1.T ≈ r.T
     @test r1.fenames == [:gid]
     @test r1.panelid == :gid
+
+    dfc = df[!,[ns..., :gid, :wt]]
+    dfc = dfc[completecases(dfc), :]
+    rc = lp(dfc, :ebp, wnames=ns, nlag=12, nhorz=48, vce=HRVCE())
+    rc1 = lp(dfc, :ebp, wnames=ns, nlag=12, nhorz=48, vce=HRVCE(), checkrows=false)
+    @test rc1.B ≈ rc.B
+    @test rc1.V ≈ rc.V
+    rc = lp(dfc, :ebp, wnames=ns, nlag=12, nhorz=48, panelid=:gid, panelweight=:wt, vce=HRVCE())
+    rc1 = lp(dfc, :ebp, wnames=ns, nlag=12, nhorz=48, panelid=:gid, panelweight=:wt, vce=HRVCE(), checkrows=false)
+    @test rc1.B ≈ rc.B
+    @test rc1.V ≈ rc.V
 
     f = irf(r, :ebp, :ff4_tc, lag=1)
     @test coef(f)[1] ≈ 0.394494467439933 atol=1e-8
@@ -160,6 +187,21 @@ end
     @test rn.normmults ≈ [-5.3028242533068495] atol=1e-8
     @test riv.endonames == VarName[:ff]
     @test riv.ivnames == VarName[:ff4_tc]
+
+    rnc = lp(dfc, :ebp, xnames=:ff4_tc, wnames=(:ff4_tc,), nlag=12, nhorz=2,
+        normalize=:ff4_tc=>:ff, vce=HRVCE())
+    rivc = lp(dfc, :ebp, xnames=:ff, wnames=(:ff4_tc,), nlag=12, nhorz=2,
+        iv=:ff=>:ff4_tc, vce=HRVCE())
+    rnc1 = lp(dfc, :ebp, xnames=:ff4_tc, wnames=(:ff4_tc,), nlag=12, nhorz=2,
+        normalize=:ff4_tc=>:ff, vce=HRVCE(), checkrows=false)
+    rivc1 = lp(dfc, :ebp, xnames=:ff, wnames=(:ff4_tc,), nlag=12, nhorz=2,
+        iv=:ff=>:ff4_tc, vce=HRVCE(), checkrows=false)
+    @test rnc1.B ≈ rnc.B
+    @test rnc1.V ≈ rnc.V
+    @test rivc1.B ≈ rivc.B
+    @test rivc1.V ≈ rivc.V
+    @test rivc1.F_kp ≈ rivc.F_kp
+    @test rivc1.p_kp ≈ rivc.p_kp
 
     # Construct lags for comparing results with FixedEffectModels.jl
     for var in (:ebp, :ff4_tc)
@@ -252,6 +294,16 @@ end
     @test r1_0.F_kp[1] ≈ rfe.F_kp atol=1e-8
     @test r1_0.p_kp[1] ≈ rfe.p_kp atol=1e-8
 
+    dfc = df[!,[:y, :g, :newsy, :exp, :rec, :recnewsy, :expnewsy, :recg, :expg]]
+    dfc = dfc[completecases(dfc), :]
+    rc = lp(dfc, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
+        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, vce=HARVCE(EWC()))
+    rc1 = lp(dfc, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
+        nlag=4, nhorz=17, addylag=false, firststagebyhorz=true, vce=HARVCE(EWC()),
+        checkrows=false)
+    @test rc1.B ≈ rc.B
+    @test rc1.V ≈ rc.V
+
     r2 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g),
         nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true, vce=HARVCE(EWC()))
     f2 = irf(r2, Cum(:y), Cum(:g))
@@ -262,6 +314,14 @@ end
     @test stderror(f2)[1] ≈ 0.15265027120755809 atol=1e-8
     @test stderror(f2)[8] ≈ 0.0813792791970263 atol=1e-8
     @test stderror(f2)[16] ≈ 0.08518024610628232 atol=1e-8
+
+    rc = lp(dfc, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g),
+        nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true, vce=HARVCE(EWC()))
+    rc1 = lp(dfc, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g),
+        nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true, vce=HARVCE(EWC()),
+        checkrows=false)
+    @test rc1.B ≈ rc.B
+    @test rc1.V ≈ rc.V
 
     # Omit WWII
     r1 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>:newsy,
@@ -281,9 +341,10 @@ end
     df[!,:gid] .= 1
     df[!,:wt] .= 2
     r3 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g),
-        nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true, subset=df.wwii.==0,
-        panelid=:gid, panelweight=:wt)
+        nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true,
+        subset=df.wwii.==0, panelid=:gid, panelweight=:wt)
     @test r3.B ≈ r2.B[(1:14).!=2,:,:]
+    @test r3.V ≈ r2.V[(1:14).!=2,(1:14).!=2,:]
 
     # State dependency
     # Compare estimates generated from `jordagk_twoinstruments.do`
@@ -292,7 +353,8 @@ end
     # nomit
     r2 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
         iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
-        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true)
+        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false,
+        firststagebyhorz=true)
     f2rec = irf(r2, Cum(:y), Cum(:g,:rec))
     @test coef(f2rec)[1] ≈ .2718093668839 atol=1e-9
     @test coef(f2rec)[8] ≈ .6357587189621 atol=1e-9
@@ -301,6 +363,17 @@ end
     @test coef(f2exp)[1] ≈ .2660710337235 atol=1e-9
     @test coef(f2exp)[8] ≈ .3511868388287 atol=1e-9
     @test coef(f2exp)[16] ≈ .373442191223 atol=1e-9
+
+    rc = lp(dfc, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
+        iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
+        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false,
+        firststagebyhorz=true)
+    rc1 = lp(dfc, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
+        iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
+        states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false,
+        firststagebyhorz=true, checkrows=false)
+    @test rc1.B ≈ rc.B
+    @test rc1.V ≈ rc.V
 
     # wwii
     r2 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
@@ -325,8 +398,9 @@ end
     r3 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
         iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
         states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false,
-        firststagebyhorz=true, subset=df.wwii.==0, panelid=:gid)#, panelweight=:wt)
+        firststagebyhorz=true, subset=df.wwii.==0, panelid=:gid, panelweight=:wt)
     @test r3.B ≈ r2.B[(1:28).!=4,:,:]
+    @test r3.V[:,:,:] ≈ r2.V[(1:28).!=4,(1:28).!=4,:]
 
     @test_logs (:warn, "panelweight is ignored when panelid is nothing")
         lp(df, :y, xnames=:g, panelweight=:wt)
@@ -350,6 +424,12 @@ end
     @test f.B[2] ≈ -0.1599185 atol=1e-7
     @test f.B[4] ≈ -0.0047023 atol=1e-7
 
+    dfc = df[completecases(df), :]
+    rc = lp(dfc, :dlgrgdp, wnames=ws, nlag=3, nhorz=5, panelid=:iso)
+    rc1 = lp(dfc, :dlgrgdp, wnames=ws, nlag=3, nhorz=5, panelid=:iso, checkrows=false)
+    @test rc1.B ≈ rc.B
+    @test rc1.V ≈ rc.V
+
     r1 = lp(df, :dlgrgdp, wnames=ws, nlag=3, nhorz=1, panelid=:iso, vce=cluster(:iso))
     f1 = irf(r1, :dlgrgdp, :dlgrgdp, lag=1)
     # Construct lags for comparing confidence intervals with FixedEffectModels.jl
@@ -372,6 +452,12 @@ end
     @test f1ci[1][1] ≈ confint(rfe)[1,1] atol=1e-8
     @test f1ci[2][1] ≈ confint(rfe)[1,2] atol=1e-8
 
+    rc = lp(dfc, :dlgrgdp, wnames=ws, nlag=3, nhorz=1, panelid=:iso, vce=cluster(:iso))
+    rc1 = lp(dfc, :dlgrgdp, wnames=ws, nlag=3, nhorz=1, panelid=:iso, vce=cluster(:iso),
+        checkrows=false)
+    @test rc1.B ≈ rc.B
+    @test rc1.V ≈ rc.V
+
     # Must fill in the missing values at the end even they are not used
     # This avoids reg from dropping additional rows at the end in the first-stage regression
     f = x->lag(x, -2, default=1.0)
@@ -384,13 +470,74 @@ end
     f2 = irf(r2, :f2dlgrgdp, :dlgrgdp)
     @test coef(r2, 1, :dlgrgdp) ≈ coef(rfe)[end] atol=1e-8
     @test stderror(f2)[1] ≈ stderror(rfe)[end] atol=1e-8
-    @test r2.F_kp[1] ≈ rfe.F_kp atol=1e-8
-    @test r2.p_kp[1] ≈ rfe.p_kp atol=1e-8
+    @test r2.F_kp ≈ rfe.F_kp atol=1e-8
+    @test r2.p_kp ≈ rfe.p_kp atol=1e-8
     @test dof_residual(r2)[1] == 2409
+
+    df[!,:wt] .= 2
+    r2w = lp(df, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws, nlag=3, nhorz=1, panelweight=:wt,
+        iv=:dlgrgdp=>:dlgcpi, panelid=:iso, vce=cluster(:iso), addylag=false)
+    @test r2w.B ≈ r2.B
+    @test r2w.V ≈ r2.V
+
+    dfc = df[completecases(df), :]
+    rc = lp(dfc, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws, nlag=3, nhorz=1,
+        iv=:dlgrgdp=>:dlgcpi, panelid=:iso, vce=cluster(:iso), addylag=false)
+    rc1 = lp(dfc, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws, nlag=3, nhorz=1,
+        iv=:dlgrgdp=>:dlgcpi, panelid=:iso, vce=cluster(:iso), addylag=false,
+        checkrows=false)
+    @test rc1.B ≈ rc.B
+    @test rc1.V ≈ rc.V
+
+    # Find the 7 countries without missing data for a balanced panel
+    # Verify that with wgs, results are the same as having full interactive columns
+    cc = combine(groupby(dfc,:iso), nrow=>:count)
+    dfb = dfc[dfc.iso.∈(cc[cc.count.==maximum(cc.count),:iso],),:]
+    sort!(dfb, [:iso, :year])
+    wgs = ntuple(l->Symbol(:l,l,:dlgrgdp), 3)
+    rhs = (term(:dlgrgdp)~term(:dlgcpi), term.(lws[4:end])...,
+        term.(wgs).&term(:iso)..., fe(:iso))
+    rfe = reg(dfb, term(:f2dlgrgdp)~rhs, cluster(:iso), subset=dfb.year.>1876)
+    r3 = lp(dfb, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws[2:3], wgnames=ws[1], nlag=3,
+        nhorz=1, iv=:dlgrgdp=>:dlgcpi, panelid=:iso, vce=cluster(:iso), addylag=false,
+        checkrows=false, balancedpanel=true)
+    f3 = irf(r3, :f2dlgrgdp, :dlgrgdp)
+    @test coef(r3, 1, :dlgrgdp) ≈ coef(rfe)[end] atol=1e-8
+    @test stderror(f3)[1] ≈ stderror(rfe)[end] atol=1e-8
+    @test r3.F_kp ≈ rfe.F_kp atol=1e-8
+    @test r3.p_kp ≈ rfe.p_kp atol=1e-8
+    @test dof_residual(r3)[1] == 979
+
+    r3w = lp(dfb, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws[2:3], wgnames=ws[1], nlag=3,
+        nhorz=1, iv=:dlgrgdp=>:dlgcpi, panelid=:iso, panelweight=:wt,
+        vce=cluster(:iso), addylag=false, checkrows=false, balancedpanel=true)
+    @test r3w.B ≈ r3.B
+    @test r3w.V ≈ r3.V
+    @test r3w.F_kp ≈ r3.F_kp
+    @test r3w.p_kp ≈ r3.p_kp
 
     r = lp(df, :dlgrgdp, wnames=ws, nlag=3, nhorz=5, panelid=:iso, addpanelidfe=false)
     @test isempty(r.fenames)
 
+    # No redundant ylag with y in wgnames
+    # Also no constant added to wnames with nonempty wgnames
+    r = lp(dfb, :f2dlgrgdp, wnames=ws, wgnames=:f2dlgrgdp, nlag=3, nhorz=1,
+        panelid=:iso, checkrows=false, balancedpanel=true)
+    @test r.wnames == collect(ws)
+    @test r.fenames[1] == :iso
+    # With additional fes
+    r = lp(dfb, :f2dlgrgdp, wnames=ws, wgnames=:f2dlgrgdp, nlag=3, nhorz=1,
+        panelid=:iso, fes=:year, checkrows=false, balancedpanel=true)
+    @test r.fenames == [:year, :iso]
+
     @test_throws ArgumentError lp(df, :dlgrgdp, wnames=ws, fes=(:iso,))
     @test_throws ArgumentError lp(df, :dlgrgdp, wnames=ws, vce=cluster(:iso))
+    @test_throws ArgumentError lp(dfb, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws[2:3],
+        wgnames=ws[1], nlag=3, nhorz=1, iv=:dlgrgdp=>:dlgcpi, panelid=:iso,
+        vce=cluster(:iso), addylag=false)
+    @test_throws ArgumentError lp(dfb, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws[2:3],
+        wgnames=ws[1], nlag=3, nhorz=1, iv=:dlgrgdp=>:dlgcpi, panelid=:iso,
+        vce=cluster(:iso), addylag=false, checkrows=false)
+    @test_throws ArgumentError lp(df, :dlgrgdp, wnames=ws, subset=df.year.>1900,
+        checkrows=false)
 end

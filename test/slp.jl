@@ -96,9 +96,11 @@ end
     T = 100
     ys, ss, xs = Any[randn(T)], [randn(T)], Any[randn(T)]
     ws = ys
+    wgs = Any[]
     fes0 = Any[]
     clus0 = Any[]
-    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 3, 0, nothing, nothing)
+    dt = LPData(ys, xs, ws, wgs, nothing, fes0, nothing, clus0, nothing, 3, 0,
+        nothing, nothing, true)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 5)
     @test T1 == T-8
     @test size(res) == (T1, 2)
@@ -106,7 +108,8 @@ end
     @test all(e2)
 
     xs = Any[]
-    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 1, 0, nothing, nothing)
+    dt = LPData(ys, xs, ws, wgs, nothing, fes0, nothing, clus0, nothing, 1, 0,
+        nothing, nothing, true)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 0)
     @test T1 == 99
     @test size(res) == (T1, 2)
@@ -116,14 +119,16 @@ end
     ys[1][2], ys[1][3] = NaN, Inf
     xs = Any[convert(Vector{Union{Float64, Missing}}, randn(T))]
     xs[1][3] = missing
-    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 1, 0, nothing, nothing)
+    dt = LPData(ys, xs, ws, wgs, nothing, fes0, nothing, clus0, nothing, 1, 0,
+        nothing, nothing, true)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 0)
     @test T1 == 96
     @test size(res) == (T1, 2)
     @test e1 == ((1:99).>3)
     @test all(e2)
 
-    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 1, 1, ((1:100).<60).|((1:100).>=70), nothing)
+    dt = LPData(ys, xs, ws, wgs, nothing, fes0, nothing, clus0, nothing, 1, 1,
+        ((1:100).<60).|((1:100).>=70), nothing, true)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 1)
     @test T1 == 83
     @test e1 == ((1:98).>3) .& (((1:98).<58) .| ((1:98).>=70))
@@ -132,7 +137,8 @@ end
     ys, xs = Any[randn(T)], Any[randn(T)]
     ss[1][2], ss[1][4] = NaN, Inf
     ws = ys
-    dt = LPData(ys, xs, ws, nothing, fes0, clus0, nothing, 2, 0, nothing, nothing)
+    dt = LPData(ys, xs, ws, wgs, nothing, fes0, nothing, clus0, nothing, 2, 0,
+        nothing, nothing, true)
     res, X, T1, e1, e2 = _makeYSr(dt, ss, 0)
     @test T1 == 97
     @test all(e1)
