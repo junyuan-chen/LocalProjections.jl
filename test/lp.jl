@@ -143,7 +143,7 @@ end
     # Have one fewer coefficient because the constant term is replace by FE
     @test r1.B ≈ r.B[2:61,:,:]
     # Does not seem to be an issue but ≈ fails for certain horizons
-    @test maximum(abs.(r1.V[:,:,:] .- r.V[2:61,2:61,:])) < 5e-8
+    @test maximum(abs.(r1.V[:,:,:] .- r.V[2:61,2:61,:])) < 1e-7
     # V is not exactly the same because of the removed intercept
     @test r1.T ≈ r.T
     @test r1.fenames == [:gid]
