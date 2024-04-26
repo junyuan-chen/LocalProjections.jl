@@ -109,7 +109,7 @@ end
     ys = Any[randn(T), randn(T)]
     xs = Any[randn(T), randn(T)]
     ws = ys
-    dt = LPData(ys, xs, ws, Any[], nothing, Any[], Any[], nothing, 3, 0, nothing, nothing, true)
+    dt = LPData(ys, xs, ws, Any[], nothing, Any[], nothing, Any[], nothing, 3, 0, nothing, nothing, true)
     b, v, t, m = _lp(dt, 5, SimpleVCE(), nothing, nothing)
     @test size(b) == (8, 2)
     @test size(v) == (16, 16)
@@ -142,6 +142,8 @@ end
     r1 = lp(df, :ebp, wnames=ns, nlag=12, nhorz=48, panelid=:gid, panelweight=:wt, vce=HRVCE())
     # Have one fewer coefficient because the constant term is replace by FE
     @test r1.B ≈ r.B[2:61,:,:]
+    # Does not seem to be an issue but ≈ fails for certain horizons
+    @test maximum(abs.(r1.V[:,:,:] .- r.V[2:61,2:61,:])) < 5e-8
     # V is not exactly the same because of the removed intercept
     @test r1.T ≈ r.T
     @test r1.fenames == [:gid]
@@ -339,9 +341,10 @@ end
     df[!,:gid] .= 1
     df[!,:wt] .= 2
     r3 = lp(df, Cum(:y), xnames=Cum(:g), wnames=(:newsy, :y, :g), iv=Cum(:g)=>(:newsy, :g),
-        nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true, subset=df.wwii.==0,
-        panelid=:gid, panelweight=:wt)
+        nlag=4, nhorz=16, minhorz=1, addylag=false, firststagebyhorz=true,
+        subset=df.wwii.==0, panelid=:gid, panelweight=:wt)
     @test r3.B ≈ r2.B[(1:14).!=2,:,:]
+    @test r3.V ≈ r2.V[(1:14).!=2,(1:14).!=2,:]
 
     # State dependency
     # Compare estimates generated from `jordagk_twoinstruments.do`
@@ -395,8 +398,9 @@ end
     r3 = lp(df, Cum(:y), xnames=(Cum(:g,:rec), Cum(:g,:exp), :rec), wnames=(:newsy, :y, :g),
         iv=(Cum(:g,:rec), Cum(:g,:exp))=>(:recnewsy, :expnewsy, :recg, :expg),
         states=(:rec, :exp), nlag=4, nhorz=16, minhorz=1, addylag=false,
-        firststagebyhorz=true, subset=df.wwii.==0, panelid=:gid)#, panelweight=:wt)
+        firststagebyhorz=true, subset=df.wwii.==0, panelid=:gid, panelweight=:wt)
     @test r3.B ≈ r2.B[(1:28).!=4,:,:]
+    @test r3.V[:,:,:] ≈ r2.V[(1:28).!=4,(1:28).!=4,:]
 
     @test_logs (:warn, "panelweight is ignored when panelid is nothing")
         lp(df, :y, xnames=:g, panelweight=:wt)
@@ -470,6 +474,12 @@ end
     @test r2.p_kp ≈ rfe.p_kp atol=1e-8
     @test dof_residual(r2)[1] == 2409
 
+    df[!,:wt] .= 2
+    r2w = lp(df, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws, nlag=3, nhorz=1, panelweight=:wt,
+        iv=:dlgrgdp=>:dlgcpi, panelid=:iso, vce=cluster(:iso), addylag=false)
+    @test r2w.B ≈ r2.B
+    @test r2w.V ≈ r2.V
+
     dfc = df[completecases(df), :]
     rc = lp(dfc, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws, nlag=3, nhorz=1,
         iv=:dlgrgdp=>:dlgcpi, panelid=:iso, vce=cluster(:iso), addylag=false)
@@ -488,8 +498,8 @@ end
     rhs = (term(:dlgrgdp)~term(:dlgcpi), term.(lws[4:end])...,
         term.(wgs).&term(:iso)..., fe(:iso))
     rfe = reg(dfb, term(:f2dlgrgdp)~rhs, cluster(:iso), subset=dfb.year.>1876)
-    r3 = lp(dfb, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws[2:3], wgnames=ws[1], nlag=3, nhorz=1,
-        iv=:dlgrgdp=>:dlgcpi, panelid=:iso, vce=cluster(:iso), addylag=false,
+    r3 = lp(dfb, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws[2:3], wgnames=ws[1], nlag=3,
+        nhorz=1, iv=:dlgrgdp=>:dlgcpi, panelid=:iso, vce=cluster(:iso), addylag=false,
         checkrows=false, balancedpanel=true)
     f3 = irf(r3, :f2dlgrgdp, :dlgrgdp)
     @test coef(r3, 1, :dlgrgdp) ≈ coef(rfe)[end] atol=1e-8
@@ -498,15 +508,27 @@ end
     @test r3.p_kp ≈ rfe.p_kp atol=1e-8
     @test dof_residual(r3)[1] == 979
 
+    r3w = lp(dfb, :f2dlgrgdp, xnames=:dlgrgdp, wnames=ws[2:3], wgnames=ws[1], nlag=3,
+        nhorz=1, iv=:dlgrgdp=>:dlgcpi, panelid=:iso, panelweight=:wt,
+        vce=cluster(:iso), addylag=false, checkrows=false, balancedpanel=true)
+    @test r3w.B ≈ r3.B
+    @test r3w.V ≈ r3.V
+    @test r3w.F_kp ≈ r3.F_kp
+    @test r3w.p_kp ≈ r3.p_kp
+
     r = lp(df, :dlgrgdp, wnames=ws, nlag=3, nhorz=5, panelid=:iso, addpanelidfe=false)
     @test isempty(r.fenames)
 
     # No redundant ylag with y in wgnames
     # Also no constant added to wnames with nonempty wgnames
     r = lp(dfb, :f2dlgrgdp, wnames=ws, wgnames=:f2dlgrgdp, nlag=3, nhorz=1,
-        panelid=:iso, addpanelidfe=false, checkrows=false, balancedpanel=true)
+        panelid=:iso, checkrows=false, balancedpanel=true)
     @test r.wnames == collect(ws)
-    @test isempty(r.fenames)
+    @test r.fenames[1] == :iso
+    # With additional fes
+    r = lp(dfb, :f2dlgrgdp, wnames=ws, wgnames=:f2dlgrgdp, nlag=3, nhorz=1,
+        panelid=:iso, fes=:year, checkrows=false, balancedpanel=true)
+    @test r.fenames == [:year, :iso]
 
     @test_throws ArgumentError lp(df, :dlgrgdp, wnames=ws, fes=(:iso,))
     @test_throws ArgumentError lp(df, :dlgrgdp, wnames=ws, vce=cluster(:iso))

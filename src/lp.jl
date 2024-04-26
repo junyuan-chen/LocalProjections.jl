@@ -248,6 +248,9 @@ function _getcols(data, ynames, xnames, wnames, wgnames,
         any(in(wgnames), wnames) && throw(ArgumentError(
             "a name in wgnames cannot also be in wnames"))
         any(x->x isa Cum, wgnames) && throw(ArgumentError("Cum is not allowed in wgnames"))
+        # An intercept is always added when partialing out wgs
+        # Need addpanelidfe only for handling doffe
+        addpanelidfe = true
     end
     states===nothing || _checknames(states) || throw(ArgumentError("invalid states"*argmsg))
     length(fes)==0 || _checknames(fes) || throw(ArgumentError("invalid fes"*argmsg))
@@ -263,6 +266,8 @@ function _getcols(data, ynames, xnames, wnames, wgnames,
     panelweight === nothing || (panelweight = _toname(data, panelweight))
     !addpanelidfe || panelid === nothing || panelid in fenames || push!(fenames, panelid)
     addylag && union!(wnames, setdiff(ynames, wgnames))
+    isempty(wgnames) || length(fenames) == 1 ||
+        @warn "caution should be taken as variables in wgnames are not partialled out by the fixed effects other than panelid"
 
     ys = Any[getcolumn(data, n) for n in ynames]
     xs = Any[getcolumn(data, n) for n in xnames]
@@ -278,15 +283,16 @@ function _getcols(data, ynames, xnames, wnames, wgnames,
         xnames = VarName[xnames..., :constant]
     end
 
+    ipanelfe = panelid === nothing ? nothing : findfirst(==(panelid), fenames)
     groups = panelid === nothing ? nothing : _group(getcolumn(data, panelid))
     pw = panelweight === nothing ? nothing : getcolumn(data, panelweight)
 
-    return ynames, xnames, wnames, wgnames, stnames, fenames, panelid, panelweight, states,
-        ys, xs, ws, wgs, sts, fes, clus, pw, groups
+    return ynames, xnames, wnames, wgnames, stnames, fenames, panelid, ipanelfe,
+        panelweight, states, ys, xs, ws, wgs, sts, fes, clus, pw, groups
 end
 
 function _lp(dt::LPData, horz::Int, vce, yfs::Nothing, ix_iv)
-    Y, X, _, pt, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
+    Y, X, _, pt, FE, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
     dofr = T - size(X,2) - doffe
     pt === nothing || (dofr -= (size(pt.X,2)-1) * length(dt.groups))
     m = OLS(Y, X, dofr)
@@ -294,8 +300,8 @@ function _lp(dt::LPData, horz::Int, vce, yfs::Nothing, ix_iv)
 end
 
 function _lp(dt::LPData, horz::Int, vce, yfs::Vector, ix_iv)
-    Y, Xhat, _, pt, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
-    Xendo = _makeXendo(dt, esampleT, horz, yfs)
+    Y, Xhat, _, pt, FE, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
+    Xendo = _makeXendo(dt, esampleT, horz, yfs, FE, W)
     X = similar(Xhat)
     copyto!(view(X,:,ix_iv), Xendo)
     iexo = setdiff(1:size(X,2), ix_iv)
@@ -307,7 +313,7 @@ function _lp(dt::LPData, horz::Int, vce, yfs::Vector, ix_iv)
 end
 
 function _lp(dt::LPData, horz::Int, vce::ClusterCovariance, yfs::Nothing, ix_iv)
-    Y, X, _, pt, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
+    Y, X, _, pt, FE, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
     vce = cluster(names(vce), (CLU...,))
     dofr = T - size(X,2) - doffe
     pt === nothing || (dofr -= (size(pt.X,2)-1) * length(dt.groups))
@@ -317,8 +323,8 @@ function _lp(dt::LPData, horz::Int, vce::ClusterCovariance, yfs::Nothing, ix_iv)
 end
 
 function _lp(dt::LPData, horz::Int, vce::ClusterCovariance, yfs::Vector, ix_iv)
-    Y, Xhat, _, pt, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
-    Xendo = _makeXendo(dt, esampleT, horz, yfs)
+    Y, Xhat, _, pt, FE, CLU, W, T, esampleT, doffe = _makeYX(dt, horz)
+    Xendo = _makeXendo(dt, esampleT, horz, yfs, FE, W)
     X = similar(Xhat)
     copyto!(view(X,:,ix_iv), Xendo)
     iexo = setdiff(1:size(X,2), ix_iv)
@@ -331,8 +337,8 @@ function _lp(dt::LPData, horz::Int, vce::ClusterCovariance, yfs::Vector, ix_iv)
     return coef(m), vcov(m, vce), T, m
 end
 
-function _normalize!(data, normalize, xnames, xs, ws, wgs, sts, fes, pw, nlag, minhorz,
-        subset, groups, checkrows; TF=Float64)
+function _normalize!(data, normalize, xnames, xs, ws, wgs, sts, fes, ipanelfe, pw,
+        nlag, minhorz, subset, groups, checkrows; TF=Float64)
     snames = normalize isa Pair ? (normalize[1],) : (p[1] for p in normalize)
     ix_s = Vector{Int}(undef, length(snames))
     for (i, n) in enumerate(snames)
@@ -344,8 +350,8 @@ function _normalize!(data, normalize, xnames, xs, ws, wgs, sts, fes, pw, nlag, m
     nnames = normalize isa Pair ? (normalize[2],) : (p[2] for p in normalize)
     yn = Any[getcolumn(data, n) for n in nnames]
     # Data on clusters are not needed
-    dt = LPData(yn, xs, ws, wgs, sts, fes, Any[], pw, nlag, minhorz, subset, groups,
-        checkrows, TF)
+    dt = LPData(yn, xs, ws, wgs, sts, fes, ipanelfe, Any[], pw, nlag, minhorz, subset,
+        groups, checkrows, TF)
     Bn, Vn, Tn, _ = _lp(dt, minhorz, nothing, nothing, nothing)
     normmults = TF[Bn[ix,i] for (i,ix) in enumerate(ix_s)]
     xs[ix_s] .*= normmults
@@ -354,14 +360,15 @@ function _normalize!(data, normalize, xnames, xs, ws, wgs, sts, fes, pw, nlag, m
     return normnames, normtars, normmults
 end
 
-_normalize!(data, normalize::Nothing, xnames, xs, ws, wgs, sts, fes, pw, nlag, minhorz,
-    subset, groups, checkrows; TF=Float64) = (nothing, nothing, nothing)
+_normalize!(data, normalize::Nothing, xnames, xs, ws, wgs, sts, fes, ipanelfe, pw,
+    nlag, minhorz, subset, groups, checkrows; TF=Float64) = (nothing, nothing, nothing)
 
-function _firststage(nendo, niv, ys, xs, ws, wgs, sts, fes, clus, pw, nlag::Int, horz::Int,
-        subset::Union{BitVector,Nothing}, groups, testweakiv, vce, checkrows; TF=Float64)
-    dt = LPData(ys, xs, ws, wgs, sts, fes, clus, pw, nlag, horz, subset, groups,
+function _firststage(nendo, niv, ys, xs, ws, wgs, sts, fes, ipanelfe, clus, pw,
+        nlag::Int, horz::Int, subset::Union{BitVector,Nothing}, groups,
+        testweakiv, vce, checkrows; TF=Float64)
+    dt = LPData(ys, xs, ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, horz, subset, groups,
         checkrows, TF)
-    Y, X, Ypt, pt, CLU, W, T, esampleT, doffe = _makeYX(dt, horz, true)
+    Y, X, Ypt, pt, FE, CLU, W, T, esampleT, doffe = _makeYX(dt, horz, true)
     # Get first-stage estimates
     bf = X'Ypt
     ldiv!(cholesky!(X'X), bf)
@@ -400,7 +407,7 @@ function _firststage(nendo, niv, ys, xs, ws, wgs, sts, fes, clus, pw, nlag::Int,
     return fitted, F_kp, p_kp
 end
 
-function _iv!(data, iv, firststagebyhorz, xnames, xs, ws, wgs, sts, fes, clus, pw,
+function _iv!(data, iv, firststagebyhorz, xnames, xs, ws, wgs, sts, fes, ipanelfe, clus, pw,
         nlag, minhorz, subset, groups, testweakiv, vce, checkrows; TF=Float64)
     endonames = iv[1]
     endonames isa VarIndex && (endonames = (endonames,))
@@ -427,7 +434,8 @@ function _iv!(data, iv, firststagebyhorz, xnames, xs, ws, wgs, sts, fes, clus, p
         any(x->x isa Cum, endonames) &&
             @warn "firststagebyhorz=false while endogenous variables contain Cum"
         fitted, F_kp, p_kp = _firststage(nendo, niv, yfs, xfs, ws, wgs, sts,
-            fes, clus, pw, nlag, minhorz, subset, groups, testweakiv, vce, checkrows; TF=TF)
+            fes, ipanelfe, clus, pw, nlag, minhorz, subset,
+            groups, testweakiv, vce, checkrows; TF=TF)
         # Replace the endogenous variable with the fitted values
         xs[ix_iv] .= fitted
     else
@@ -438,11 +446,11 @@ function _iv!(data, iv, firststagebyhorz, xnames, xs, ws, wgs, sts, fes, clus, p
     return endonames, ivnames, ix_iv, yfs, xfs, F_kp, p_kp
 end
 
-_iv!(data, iv::Nothing, firststagebyhorz, xnames, xs, ws, wgs, sts, fes, clus, pw,
+_iv!(data, iv::Nothing, firststagebyhorz, xnames, xs, ws, wgs, sts, fes, ipanelfe, clus, pw,
     nlag, minhorz, subset, groups, testweakiv, vce, checkrows; TF=Float64) =
         (nothing, nothing, nothing, nothing, nothing, nothing, nothing)
 
-function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, wgs, sts, fes, clus, pw,
+function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, wgs, sts, fes, ipanelfe, clus, pw,
         nlag, minhorz, nhorz, vce, subset, groups,
         iv, ix_iv, nendo, niv, yfs, xfs, firststagebyhorz, testweakiv, checkrows; TF=Float64)
     ny = length(ys)
@@ -454,7 +462,7 @@ function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, wgs, sts, fes, clus, p
     M = Vector{OLS{TF}}(undef, nhorz)
     firststagebyhorz = iv !== nothing && firststagebyhorz
     if !firststagebyhorz && !any(x->x isa Cum, xs)
-        dt = LPData(ys, xs, ws, wgs, sts, fes, clus, pw, nlag, minhorz, subset, groups,
+        dt = LPData(ys, xs, ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, minhorz, subset, groups,
             checkrows, TF)
     end
     F_kps = firststagebyhorz && testweakiv ? Vector{Float64}(undef, nhorz) : nothing
@@ -464,17 +472,18 @@ function _est(::LeastSquaresLP, data, xnames, ys, xs, ws, wgs, sts, fes, clus, p
         # Handle cases where all data need to be regenerated for each horizon
         if firststagebyhorz
             fitted, F_kpsi, p_kpsi = _firststage(nendo, niv, yfs, xfs, ws, wgs, sts,
-                fes, clus, pw, nlag, h, subset, groups, testweakiv, vce, checkrows; TF=TF)
+                fes, ipanelfe, clus, pw, nlag, h, subset, groups,
+                testweakiv, vce, checkrows; TF=TF)
             if testweakiv
                 F_kps[i] = F_kpsi
                 p_kps[i] = p_kpsi
             end
             xs[ix_iv] .= fitted
-            dt = LPData(ys, xs, ws, wgs, sts, fes, clus, pw, nlag, h, subset, groups,
-                checkrows, TF)
+            dt = LPData(ys, xs, ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, h,
+                subset, groups, checkrows, TF)
         elseif any(x->x isa Cum, xs)
-            dt = LPData(ys, xs, ws, wgs, sts, fes, clus, pw, nlag, h, subset, groups,
-                checkrows, TF)
+            dt = LPData(ys, xs, ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, h,
+                subset, groups, checkrows, TF)
         end
         Bh, Vh, T[i], M[i] = _lp(dt, h, vce, yfs, ix_iv)
         B[:,:,i] = reshape(Bh, nr, ny, 1)
@@ -494,7 +503,7 @@ The input `data` must be `Tables.jl`-compatible.
 # Keywords
 - `xnames=()`: indices of contemporaneous regressors from `data`.
 - `wnames=()`: indices of lagged control variables from `data`.
-- `wgnames=()`: indices of lagged control variables from `data` that are interacted with `panelid`; only relevant with panel data.
+- `wgnames=()`: indices of lagged control variables from `data` that are interacted with `panelid` and partialled out before the main estimation; only relevant with panel data; coefficient estimates are not computed.
 - `nlag::Int=4`: number of lags to be included for the lagged control variables.
 - `nhorz::Int=1`: total number of horizons to be estimated.
 - `minhorz::Int=0`: the minimum horizon involved in estimation.
@@ -531,8 +540,8 @@ function lp(estimator, data, ynames;
 
     clunames = vce isa ClusterCovariance ? names(vce) : ()
 
-    ynames, xnames, wnames, wgnames, stnames, fenames, panelid, panelweight, states,
-        ys, xs, ws, wgs, sts, fes, clus, pw, groups =
+    ynames, xnames, wnames, wgnames, stnames, fenames, panelid, ipanelfe,
+        panelweight, states, ys, xs, ws, wgs, sts, fes, clus, pw, groups =
             _getcols(data, ynames, xnames, wnames, wgnames, states,
             fes, clunames, panelid, panelweight, addpanelidfe, addylag, nocons)
 
@@ -561,16 +570,16 @@ function lp(estimator, data, ynames;
     normalize !== nothing && iv !== nothing &&
         throw(ArgumentError("options normalize and iv cannot be specified at the same time"))
     normnames, normtars, normmults =
-        _normalize!(data, normalize, xnames, xs, ws, wgs, sts, fes, pw, nlag, minhorz,
-            subset, groups, checkrows, TF=TF)
+        _normalize!(data, normalize, xnames, xs, ws, wgs, sts, fes, ipanelfe, pw,
+            nlag, minhorz, subset, groups, checkrows, TF=TF)
     endonames, ivnames, ix_iv, yfs, xfs, F_kp, p_kp =
-        _iv!(data, iv, firststagebyhorz, xnames, xs, ws, wgs, sts, fes, clus, pw, nlag,
-            minhorz, subset, groups, testweakiv, vce, checkrows, TF=TF)
+        _iv!(data, iv, firststagebyhorz, xnames, xs, ws, wgs, sts, fes, ipanelfe, clus, pw,
+            nlag, minhorz, subset, groups, testweakiv, vce, checkrows, TF=TF)
     nendo = endonames === nothing ? 0 : length(endonames)
     niv = ivnames === nothing ? 0 : length(ivnames)
 
     B, V, T, er, F_kps, p_kps = _est(estimator, data, xnames, ys, xs, ws, wgs, sts,
-        fes, clus, pw, nlag, minhorz, nhorz, vce, subset, groups,
+        fes, ipanelfe, clus, pw, nlag, minhorz, nhorz, vce, subset, groups,
         iv, ix_iv, nendo, niv, yfs, xfs, firststagebyhorz, testweakiv, checkrows, TF=TF)
 
     if firststagebyhorz

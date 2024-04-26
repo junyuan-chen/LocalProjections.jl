@@ -23,6 +23,7 @@ struct LPData{TF<:AbstractFloat, TG<:Union{Vector,Nothing},
     ys::Vector{Any}
     wgs::Vector{Any}
     fes::Vector{Any}
+    ipanelfe::Union{Int,Nothing}
     clus::Vector{Any}
     pw::TW
     nlag::Int
@@ -130,7 +131,7 @@ function _checklpdata(ys, ws, nlag)
     length(ws) > 0 || throw(ArgumentError("ws cannot be empty"))
 end
 
-function LPData(ys, xs, ws, wgs, sts, fes, clus, pw, nlag, minhorz, subset,
+function LPData(ys, xs, ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, minhorz, subset,
         groups::Nothing, checkrows, TF=Float64)
     _checklpdata(ys, ws, nlag)
     Tfull = size(ys[1],1)
@@ -154,10 +155,11 @@ function LPData(ys, xs, ws, wgs, sts, fes, clus, pw, nlag, minhorz, subset,
         esampleT = nothing
         _fillX!(X, xs, ws, sts, nlag, minhorz, TF)
     end
-    return LPData(ys, wgs, fes, clus, pw, nlag, minhorz, subset, X, esampleT, groups)
+    return LPData(ys, wgs, fes, ipanelfe, clus, pw, nlag, minhorz, subset, X,
+        esampleT, groups)
 end
 
-function LPData(ys, xs, ws, wgs, sts, fes, clus, pw, nlag, minhorz, subset,
+function LPData(ys, xs, ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, minhorz, subset,
         groups::Vector, checkrows, TF=Float64)
     _checklpdata(ys, ws, nlag)
     ng = length(groups)
@@ -203,7 +205,8 @@ function LPData(ys, xs, ws, wgs, sts, fes, clus, pw, nlag, minhorz, subset,
         sum(esampleT) > nX || throw(ArgumentError(
             "not enough observations for nlag=$nlag and minhorz=$minhorz"))
     end
-    return LPData(ys, wgs, fes, clus, pw, nlag, minhorz, subset, X, esampleT, groups)
+    return LPData(ys, wgs, fes, ipanelfe, clus, pw, nlag, minhorz, subset, X,
+        esampleT, groups)
 end
 
 function _fillY!(Y, esampleT, aux, ys, nlag, horz, subset, isfirststage, TF)
@@ -273,7 +276,7 @@ function _makeYX(dt::LPData{TF,Nothing}, horz::Int, isfirststage::Bool=false) wh
         _fillY!(Y, dt.ys, dt.nlag, horz, isfirststage, TF)
         X = dt.Xfull[1:T,:]
     end
-    return Y, X, Y, nothing, nothing, uweights(T), T, esampleT, 0
+    return Y, X, Y, nothing, nothing, nothing, uweights(T), T, esampleT, 0
 end
 
 # The case for panel data
@@ -467,7 +470,6 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
     if isempty(FE)
         doffe = 0
     else
-        _feresiduals!(Y, X, FE, W)
         doffe = 0
         for fe in FE
             if !isempty(CLU) && any(x->isnested(fe, x.groups), CLU)
@@ -476,14 +478,21 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
                 doffe += nunique(fe)
             end
         end
+        # Handle doffe via fe for intercepts added to wgs
+        # but not residualize panelid via fe
+        if isempty(dt.wgs) || dt.ipanelfe === nothing
+            _feresiduals!(Y, X, FE, W)
+        else
+            if length(FE) > 1
+                FE = FE[1:length(FE).!=dt.ipanelfe]
+                _feresiduals!(Y, X, FE, W)
+            end
+        end
     end
+    # Scaling of weights comes after partialing out fe as in FixedEffectModels.jl
     if !(W isa UnitWeights)
-        for col in eachcol(Y)
-            col .*= sqrt.(W)
-        end
-        for col in eachcol(X)
-            col .*= sqrt.(W)
-        end
+        Y .*= sqrt.(W)
+        X .*= sqrt.(W)
     end
     if isempty(dt.wgs)
         pt = nothing
@@ -512,6 +521,11 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
             copyto!(view(pt.resid, :, 1:ny), gY)
             gX = view(X, 1+(g-1)*gT:g*gT, :)
             copyto!(view(pt.resid, :, ny+1:gny), gX)
+            if !(W isa UnitWeights)
+                # pt.resid is already scaled by W
+                pt.X[:,1] .= one(TF)
+                pt.X .*= sqrt.(view(W, 1+(g-1)*gT:g*gT))
+            end
             # Solve the partial OLS
             coefg = view(pt.coef, :, 1+(g-1)*gny:g*gny)
             mul!(coefg, pt.X', pt.resid)
@@ -523,7 +537,7 @@ function _makeYX(dt::LPData{TF,<:Vector}, horz::Int, isfirststage::Bool=false) w
             copyto!(gX, view(pt.resid, :, ny+1:gny))
         end
     end
-    return Y, X, Ypt, pt, CLU, W, T, esampleT, doffe
+    return Y, X, Ypt, pt, FE, CLU, W, T, esampleT, doffe
 end
 
 # Fitted values from first stage of 2SLS
@@ -574,7 +588,8 @@ function _fillfitted(fitted, groups::Vector, nY, nlag, Tfull, horz, esampleT::No
 end
 
 # Xendo is needed for computing residuals from 2SLS
-function _makeXendo(dt::LPData{TF,Nothing}, esampleT::BitVector, horz, yfs::Vector) where TF
+function _makeXendo(dt::LPData{TF,Nothing}, esampleT::BitVector, horz, yfs::Vector,
+        FE, W) where TF
     nyfs = length(yfs)
     Xendo = Matrix{TF}(undef, sum(esampleT), nyfs)
     @inbounds for j in 1:nyfs
@@ -582,10 +597,12 @@ function _makeXendo(dt::LPData{TF,Nothing}, esampleT::BitVector, horz, yfs::Vect
         src = view(yf, dt.nlag+1:length(yf)-horz)
         copyto!(view(Xendo,:,j), view(src, esampleT))
     end
+    W isa UnitWeights || (Xendo .*= sqrt.(W))
     return Xendo
 end
 
-function _makeXendo(dt::LPData{TF,Nothing}, esampleT::Nothing, horz, yfs::Vector) where TF
+function _makeXendo(dt::LPData{TF,Nothing}, esampleT::Nothing, horz, yfs::Vector,
+        FE, W) where TF
     nyfs = length(yfs)
     T = size(dt.Xfull, 1) - horz + dt.minhorz
     Xendo = Matrix{TF}(undef, T, nyfs)
@@ -594,10 +611,12 @@ function _makeXendo(dt::LPData{TF,Nothing}, esampleT::Nothing, horz, yfs::Vector
         src = view(yf, dt.nlag+1:length(yf)-horz)
         copyto!(view(Xendo,:,j), src)
     end
+    W isa UnitWeights || (Xendo .*= sqrt.(W))
     return Xendo
 end
 
-function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::BitVector, horz, yfs::Vector) where TF
+function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::BitVector, horz, yfs::Vector,
+        FE, W) where TF
     nyfs = length(yfs)
     Xendo = Matrix{TF}(undef, sum(esampleT), nyfs)
     @inbounds for j in 1:nyfs
@@ -617,10 +636,13 @@ function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::BitVector, horz, yfs::Vec
             k1 = k2 + 1
         end
     end
+    _feresiduals!(Xendo, FE, W)
+    W isa UnitWeights || (Xendo .*= sqrt.(W))
     return Xendo
 end
 
-function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::Nothing, horz, yfs::Vector) where TF
+function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::Nothing, horz, yfs::Vector,
+        FE, W) where TF
     nyfs = length(yfs)
     T = size(dt.Xfull, 1) - length(dt.groups) * (horz - dt.minhorz)
     Xendo = Matrix{TF}(undef, T, nyfs)
@@ -637,6 +659,8 @@ function _makeXendo(dt::LPData{TF,<:Vector}, esampleT::Nothing, horz, yfs::Vecto
             i1 = i2 + 1
         end
     end
+    _feresiduals!(Xendo, FE, W)
+    W isa UnitWeights || (Xendo .*= sqrt.(W))
     return Xendo
 end
 

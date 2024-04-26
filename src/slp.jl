@@ -323,7 +323,7 @@ function _getcols!(est::SmoothLP, data, xnames)
 end
 
 function _makeYSr(dt, ss, horz; TF=Float64)
-    Y, X, _, pt, CLU, W, T, esample, doffe = _makeYX(dt, horz)
+    Y, X, _, pt, FE, CLU, W, T, esample, doffe = _makeYX(dt, horz)
     Tfull = size(dt.ys[1],1)
     ns = length(ss)
     # Filter valid rows within those filtered by _makeYX
@@ -482,8 +482,8 @@ function _select(est::SmoothLP{<:GridSearch{DirectSolve}}, y, C, crossy, crossC,
     return λs[iopt[est.criterion]], r, Sdiag
 end
 
-function _est(est::SmoothLP, data, xnames, ys, xs, ws, wgs, sts, fes, clus, pw, nlag,
-        minhorz, nhorz, vce, subset, groups, iv, ix_iv, nendo, niv, yfs, xfs,
+function _est(est::SmoothLP, data, xnames, ys, xs, ws, wgs, sts, fes, ipanelfe, clus, pw,
+        nlag, minhorz, nhorz, vce, subset, groups, iv, ix_iv, nendo, niv, yfs, xfs,
         firststagebyhorz, testweakiv, checkrows; TF=Float64)
     length(ys) > 1 && throw(ArgumentError("accept only one outcome variable"))
     vce isa ClusterCovariance && throw(ArgumentError(
@@ -497,8 +497,8 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, wgs, sts, fes, clus, pw, 
     firststagebyhorz = iv !== nothing && firststagebyhorz
     if !firststagebyhorz && !any(x->x isa Cum, view(xs, ix_nsm))
         xs_s = Any[xs[i] for i in ix_nsm]
-        dt = LPData(ys, xs_s, ws, wgs, sts, fes, clus, pw, nlag, minhorz, subset, groups,
-            checkrows, TF)
+        dt = LPData(ys, xs_s, ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, minhorz,
+            subset, groups, checkrows, TF)
     end
     F_kps = firststagebyhorz ? Vector{Float64}(undef, nhorz) : nothing
     p_kps = firststagebyhorz ? Vector{Float64}(undef, nhorz) : nothing
@@ -507,16 +507,16 @@ function _est(est::SmoothLP, data, xnames, ys, xs, ws, wgs, sts, fes, clus, pw, 
          # Handle cases where all data need to be regenerated for each horizon
         if firststagebyhorz
             fitted, F_kps[i], p_kps[i] = _firststage(nendo, niv, yfs, xfs,
-                ws, wgs, sts, fes, clus, pw, nlag, h, subset, groups, testweakiv, vce,
-                checkrows; TF=TF)
+                ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, h, subset, groups,
+                testweakiv, vce, checkrows; TF=TF)
             xs[ix_iv] .= fitted
             xs_s = Any[xs[i] for i in ix_nsm]
-            dt = LPData(ys, xs_s, ws, wgs, sts, fes, clus, pw, nlag, h, subset, groups,
-                checkrows, TF)
+            dt = LPData(ys, xs_s, ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, h, subset,
+                groups, checkrows, TF)
         elseif any(x->x isa Cum, view(xs, ix_nsm))
             xs_s = Any[xs[i] for i in ix_nsm]
-            dt = LPData(ys, xs_s, ws, wgs, sts, fes, clus, pw, nlag, h, subset, groups,
-                checkrows, TF)
+            dt = LPData(ys, xs_s, ws, wgs, sts, fes, ipanelfe, clus, pw, nlag, h, subset,
+                groups, checkrows, TF)
         end
         # xs could be changed by first-stage regression
         ss = view(xs, ix_sm)
